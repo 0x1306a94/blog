@@ -1,0 +1,31 @@
+name: Publish Page
+
+on:
+  repository_dispatch
+
+jobs:
+  build:
+
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v1
+
+    - name: Set Up Git SSL
+      env:
+        ACTION_DEPLOY_KEY: ${{ secrets.ACTION_DEPLOY_KEY }}
+      run: |
+        mkdir -p ~/.ssh/
+        echo "$ACTION_DEPLOY_KEY" | tr -d '\r' > ~/.ssh/id_rsa # 配置秘钥
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
+        git config --global user.name 'CI-bot' # 换成你自己的邮箱和名字
+        git config --global user.email '0x1306a94@gmail.com'
+        
+    - name: Ready for Repo
+      run: | 
+        rake ready sys="macos"
+        
+    - name: Publish
+      run: rake
