@@ -10,7 +10,9 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+    - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
 
     - name: Set Up Git SSL
       env:
@@ -20,7 +22,7 @@ jobs:
         echo "$ACTION_DEPLOY_KEY" | tr -d '\r' > ~/.ssh/id_rsa # 配置秘钥
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan github.com >> ~/.ssh/known_hosts
-        git config --global user.name '0x1306a94' # 换成你自己的邮箱和名字
+        git config --global user.name 'CI-bot' # 换成你自己的邮箱和名字
         git config --global user.email '0x1306a94@gmail.com'
         git config --global pull.rebase false
         
