@@ -3,4 +3,4 @@
 	url = https://github.com/idevqa/hugo-book-theme
 [submodule "content"]
 	path = content
-	url = https://github.com/0x1306a94/blog-content
+	url = git@github.com:0x1306a94/blog-content
