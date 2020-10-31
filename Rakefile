@@ -17,7 +17,6 @@ desc "Update content"
 task :u do
   Dir.chdir("./content") do
     system "git pull origin master"
-    system "tree"
   end 
 end
 
@@ -36,6 +35,7 @@ task :ready do
   end
   system "bundle install"
   system "git submodule update --init"
+  system "tree"
 end
 
 desc "Generate and publish book to my Repo"
