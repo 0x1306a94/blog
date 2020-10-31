@@ -43,7 +43,7 @@ task :publish => [:u, :gen] do
     cp_r DEST, tmp
     pwd = Dir.pwd
     Dir.chdir tmp
-    system "echo '#{DOMAIN}' > CNAME'"
+    system "echo #{DOMAIN} > CNAME"
     system "git init"
     system "git checkout --orphan #{GITHUB_REPO_BRANCH}"    
     system "git add ."
