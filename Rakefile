@@ -3,6 +3,7 @@ require "tmpdir"
 
 GITHUB_REPONAME = "0x1306a94/blog"
 GITHUB_REPO_BRANCH = "gh-pages"
+DOMAIN=blog.0x1306a94.com
 DEST = "public/."
 IMG_DEST = "static/."
 
@@ -43,7 +44,7 @@ task :publish => [:u, :gen] do
     cp_r DEST, tmp
     pwd = Dir.pwd
     Dir.chdir tmp
-    
+    system "echo '#{DOMAIN}' > CNAME'
     system "git init"
     system "git checkout --orphan #{GITHUB_REPO_BRANCH}"    
     system "git add ."
