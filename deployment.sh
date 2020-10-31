@@ -4,7 +4,7 @@ set -exu
 
 syncPath='./public/*'
 
-hugo --config config-vultr.yaml
+hugo --config config-seoul.yaml
 
 rsync -avz \
 -e "ssh -i $BLOG_PRIVATE_KEY" \
