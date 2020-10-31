@@ -1,9 +1,8 @@
 require "tmpdir"
 
-
 GITHUB_REPONAME = "0x1306a94/blog"
 GITHUB_REPO_BRANCH = "gh-pages"
-DOMAIN=blog.0x1306a94.com
+DOMAIN = "blog.0x1306a94.com"
 DEST = "public/."
 IMG_DEST = "static/."
 
