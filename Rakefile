@@ -10,13 +10,14 @@ task default: %w[publish]
 
 desc "Generate book static files by Hugo"
 task :gen do
-  system "hugo"
+  system "hugo --verbose"
 end
 
 desc "Update content"
 task :u do
   Dir.chdir("./content") do
     system "git pull origin master"
+    system "tree"
   end 
 end
 
@@ -31,7 +32,7 @@ task :ready do
   if sys == "ubuntu"
     system "sudo apt-get install hugo"
   elsif sys == "macos"
-    system "brew install hugo"
+    system "brew install hugo tree --verbose"
   end
   system "bundle install"
   system "git submodule update --init"
@@ -40,7 +41,6 @@ end
 desc "Generate and publish book to my Repo"
 task :publish => [:u, :gen] do
   Dir.mktmpdir do |tmp|
-    system "ls -l #{DEST}"
     cp_r DEST, tmp
     pwd = Dir.pwd
     Dir.chdir tmp
