@@ -40,6 +40,7 @@ end
 desc "Generate and publish book to my Repo"
 task :publish => [:u, :gen] do
   Dir.mktmpdir do |tmp|
+    system "ls -l #{DEST}"
     cp_r DEST, tmp
     pwd = Dir.pwd
     Dir.chdir tmp
