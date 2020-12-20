@@ -10,6 +10,8 @@ headless: true
     - [Objective-C 关联对象原理]({{< relref "/docs/ios/runtime/ch01/01.md" >}})
   - UI
     - [实现抖音评论列表效果]({{< relref "/docs/ios/ui/ch01/01.md" >}})
+- LLVM
+  - [自定义 LLVM PASS 实现 函数耗时插桩统计]({{< relref "/docs/llvm/ch01/01.md" >}})
 - 其他
   - FFmpeg
-    - [iOS使用FFmepeg命令行工具源码实现转码功能]({{< relref "/docs/other/ffmpeg/ch01/01.md" >}})
+    - [iOS 使用 FFmepeg 命令行工具源码实现转码功能]({{< relref "/docs/other/ffmpeg/ch01/01.md" >}})
