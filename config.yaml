@@ -6,7 +6,6 @@ theme: book
 
 enableGitInfo: true
 
-
 markup:
   goldmark:
     renderer:
@@ -25,7 +24,19 @@ markup:
 
 params:
   BookMenuBundle: /menu
-  BookRepo: 'https://github.com/0x1306a94/blog-content'
+  BookRepo: "https://github.com/0x1306a94/blog-content"
   BookEditPath: edit/master
-
+  enableGitalk: true
+  gitalk:
+    clientID: "2c62ad75ef03025b19a5" # Your client ID
+    clientSecret: "0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635" # Your client secret
+    repo: "0x1306a94/blog-comments" # The repo to store comments
+    owner: "0x1306a94" # Your GitHub ID
+    admin: "0x1306a94" # Required. Github repository owner and collaborators. (Users who having write access to this repository)
+    id: "location.pathname" # The unique id of the page.
+    labels: "gitalk" # Github issue labels. If you used to use Gitment, you can change it
+    perPage: 15 # Pagination size, with maximum 100.
+    pagerDirection: "last" # Comment sorting direction, available values are 'last' and 'first'.
+    createIssueManually: false # If it is 'false', it is auto to make a Github issue when the administrators login.
+    distractionFreeMode: false # Enable hot key (cmd|ctrl + enter) submit comment.
   # WechatQRCode: https://raw.githubusercontent.com/Desgard/algo/img/img/_index/wechat-qrcode.png

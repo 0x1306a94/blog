@@ -1,6 +1,6 @@
 [submodule "themes/book"]
 	path = themes/book
-	url = https://github.com/idevqa/hugo-book-theme
+	url = https://github.com/0x1306a94/hugo-book-theme.git
 [submodule "content"]
 	path = content
 	url = https://github.com/0x1306a94/blog-content
