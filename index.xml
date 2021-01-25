@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>序章 on 0x1306a94.com</title>
+    <link>https://blog.0x1306a94.com/</link>
+    <description>Recent content in 序章 on 0x1306a94.com</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-CN</language>
+    <lastBuildDate>Sun, 20 Dec 2020 13:53:29 +0800</lastBuildDate><atom:link href="https://blog.0x1306a94.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>自定义 LLVM PASS 实现 函数耗时插桩统计</title>
+      <link>https://blog.0x1306a94.com/docs/llvm/ch01/01/</link>
+      <pubDate>Sun, 20 Dec 2020 13:53:29 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/llvm/ch01/01/</guid>
+      <description>下载源码 mkdir LLVM cd LLVM wget https://github.com/llvm/llvm-project/archive/llvmorg-11.0.0.zip unzip llvmorg-11.0.0.zip 编写编译脚本  在 LLVM 目录下,创建一个build.sh文件,拷贝下面内容  #!/usr/bin/env bash  set -e set -o pipefail set -u ROOT_DIR=`pwd` SOURCE_CODE_DIR=$ROOT_DIR/llvm-project-llvmorg-11.0.0 BUILD_DIR=$ROOT_DIR/build_dir LLVM_BUILD_DIR=$BUILD_DIR/build_llvm LLVM_OUT_DIR=$BUILD_DIR/build_llvm_out CLANG_BUILD_DIR=$BUILD_DIR/build_clang CLANG_OUT_DIR=$BUILD_DIR/build_clang_out XCODE_BUILD_DIR=$BUILD_DIR/build_xcode XCODE_OUT_DIR=$BUILD_DIR/build_xcode_out function build_llvm() { echo &amp;#34;generate llvm ninja build config ...&amp;#34; cd $LLVM_BUILD_DIR cmake -G &amp;#34;Ninja&amp;#34; \  -DCMAKE_OSX_DEPLOYMENT_TARGET=&amp;#34;10.14&amp;#34; \  -DCMAKE_OSX_SYSROOT=&amp;#34;macosx&amp;#34; \  -DCMAKE_OSX_ARCHITECTURES=&amp;#39;x86_64&amp;#39; \  -DLLVM_TARGETS_TO_BUILD=&amp;#34;X86&amp;#34; \  -DCMAKE_BUILD_TYPE=Release \  -DCMAKE_INSTALL_PREFIX=$LLVM_OUT_DIR \  $SOURCE_CODE_DIR/llvm echo &amp;#34;ninja build llvm .</description>
+    </item>
+    
+    <item>
+      <title>实现抖音评论列表效果</title>
+      <link>https://blog.0x1306a94.com/docs/ios/ui/ch01/01/</link>
+      <pubDate>Sat, 31 Oct 2020 13:00:29 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/ios/ui/ch01/01/</guid>
+      <description>通过Lookin查看视图层级可得知:  首页是一个导航栏控制器, 其 rootViewController 为 AWEFeedRootViewController AWEFeedContainerViewController 为视频列表的控制器, 同时 AWEFeedContainerViewController 做为 AWEFeedRootViewController 的 childViewController AWECommentListViewController 为评论弹层, AWECommentListViewController 并未采用 addChildViewController 方式加入 AWEFeedContainerViewController 作为其 childViewController, 而是直接将 AWECommentListViewController.view 添加到 AWEFeedRootViewController.view  AWECommentListViewController 的视图层级如下:  baseView  effectView 为 UIVisualEffectView 实现模糊效果 headerView tableView   keyboardMaskView 当键盘弹出时,才显示,用于实现点击上半部分关闭键盘 commentInputView 底部输入框  抖音评论列表有以下效果:  无评论数据时,整个 baseView 区域可以通过手势往下滑动以关闭列表 有评论数据时,下滑tableView到顶时继续往下滑动,则会让baseView和commentInputView同步联动往下滑 同时还有两个细节个人认为没有处理好:  当往下联动后再往上滑动无法触发tableView继续往上滑动 当tableView已经往上滑动了一部分后,从headerView区域无法触发滑动,只能先通过tableView触发,然后激活联动处理    接下来通过逆向分析得知:  通过上面分析的视图层级,找到baseView, 发现baseView自身被添加了一个UIPanGestureRecognizer UIPanGestureRecognizer 的 target 为 AWECommentListViewController UIPanGestureRecognizer 的 action 为 AWECommentListViewController 的 selfPanned: UIPanGestureRecognizer 的 delegate 为 AWECommentListViewController 大致确定了整个联动处理是依靠baseView的手势和tableView自身的手势共同完成  iPhone:~ root# cycript -p Aweme cy# UIApp.</description>
+    </item>
+    
+    <item>
+      <title>Objective C 关联对象原理</title>
+      <link>https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 11:06:35 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/</guid>
+      <description>如何使用?   首先需要导入 &amp;lt;objc/runtime.h&amp;gt; 头文件
+  然后通过 runtime 如下 API
+// 为 object 设置关联值 OBJC_EXPORT void objc_setAssociatedObject(id _Nonnull object, const void * _Nonnull key, id _Nullable value, objc_AssociationPolicy policy) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 获取 object 关联值 OBJC_EXPORT id _Nullable objc_getAssociatedObject(id _Nonnull object, const void * _Nonnull key) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 移除 object 所有关联值 OBJC_EXPORT void objc_removeAssociatedObjects(id _Nonnull object) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0);   示例代码一</description>
+    </item>
+    
+    <item>
+      <title>iOS使用FFmepeg命令行工具源码实现转码功能</title>
+      <link>https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 12:21:15 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/</guid>
+      <description>1 编译FFmpeg  下载FFmpeg-iOS-build-script 修改脚本如下位置  # 可改可不改 SCRATCH=&amp;#34;scratch-ffmpeg&amp;#34; # 可改可不改 # must be an absolute path THIN=`pwd`/&amp;#34;thin-ffmpeg&amp;#34; # absolute path to x264 library #X264=`pwd`/fat-x264 #FDK_AAC=`pwd`/../fdk-aac-build-script-for-iOS/fdk-aac-ios # 修改 CONFIGURE_FLAGS 为如下 CONFIGURE_FLAGS=&amp;#34;--enable-cross-compile \ --disable-debug \ --disable-programs \ --disable-ffmpeg \ --disable-ffplay \ --disable-ffprobe \ --disable-doc \ --enable-pic \ --disable-sdl2 \ --enable-videotoolbox \ --enable-avresample&amp;#34; # 只编译如下架构 ARCHS=&amp;#34;arm64 x86_64&amp;#34;  执行./build-ffmpeg.sh,等待编译完成,编译完成后再执行./build-ffmpeg.sh lipo合并所有架构的库  2 集成工程   将编译后的 静态库以及头文件导出工程, 并设置 HEADER SEARCH PATH   在项目中新建一个command-line文件夹</description>
+    </item>
+    
+    <item>
+      <title>Swift Substring</title>
+      <link>https://blog.0x1306a94.com/docs/swift/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 11:06:35 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/swift/ch01/01/</guid>
+      <description>Swift SubString 操作 import Foundation extension String { subscript(value: PartialRangeUpTo&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[..&amp;lt;index(startIndex, offsetBy: value.upperBound)] } } subscript(value: PartialRangeThrough&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[...index(startIndex, offsetBy: value.upperBound)] } } subscript(value: PartialRangeFrom&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[index(startIndex, offsetBy: value.lowerBound)...] } } subscript(value: CountableRange&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { let start = index(self.startIndex, offsetBy: value.lowerBound) let end = index(self.startIndex, offsetBy: value.upperBound) return self[start..&amp;lt;end] } } subscript(value: ClosedRange&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { let start = index(self.</description>
+    </item>
+    
+    <item>
+      <title></title>
+      <link>https://blog.0x1306a94.com/readme/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/readme/</guid>
+      <description>blog-content </description>
+    </item>
+    
+  </channel>
+</rss>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/llvm/ch01/01/</loc>
+    <lastmod>2020-12-20T13:53:29+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/ios/ui/ch01/01/</loc>
+    <lastmod>2020-10-31T13:00:29+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/</loc>
+    <lastmod>2020-02-25T11:06:35+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/</loc>
+    <lastmod>2020-12-20T13:53:29+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/</loc>
+    <lastmod>2020-12-20T13:53:29+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/</loc>
+    <lastmod>2020-02-25T12:21:15+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/docs/swift/ch01/01/</loc>
+    <lastmod>2020-02-25T11:06:35+08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/readme/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/categories/</loc>
+  </url>
+  
+  <url>
+    <loc>https://blog.0x1306a94.com/tags/</loc>
+  </url>
+  
+</urlset>
