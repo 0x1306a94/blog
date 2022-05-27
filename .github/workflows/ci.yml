@@ -26,7 +26,7 @@ jobs:
         git config --global user.name 'CI-bot' # 换成你自己的邮箱和名字
         git config --global user.email '0x1306a94@gmail.com'
         git config --global pull.rebase false
-        # git submodule set-url content https://$TOKEN:x-oauth-basic@github.com/$USER_NAME/$REPO_NAME
+        git remote set-url origin https://$TOKEN:x-oauth-basic@github.com/$USER_NAME/$REPO_NAME
         
     - name: Ready for Repo
       run: | 
