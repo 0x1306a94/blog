@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="自定义 LLVM PASS 实现 函数耗时插桩统计"><meta property="og:title" content="自定义 LLVM PASS 实现 函数耗时插桩统计" />
+<meta property="og:description" content="下载源码 mkdir LLVM cd LLVM wget https://github.com/llvm/llvm-project/archive/llvmorg-11.0.0.zip unzip llvmorg-11.0.0.zip 编写编译脚本 在 LLVM 目录下,创建一个build.sh文件,拷贝下面内容 #!/usr/bin/env bash set -e set -o pipefail set -u ROOT_DIR=`pwd` SOURCE_CODE_DIR=$ROOT_DIR/llvm-project-llvmorg-11.0.0 BUILD_DIR=$ROOT_DIR/build_dir LLVM_BUILD_DIR=$BUILD_DIR/build_llvm LLVM_OUT_DIR=$BUILD_DIR/build_llvm_out CLANG_BUILD_DIR=$BUILD_DIR/build_clang CLANG_OUT_DIR=$BUILD_DIR/build_clang_out XCODE_BUILD_DIR=$BUILD_DIR/build_xcode XCODE_OUT_DIR=$BUILD_DIR/build_xcode_out function build_llvm() { echo &#34;generate llvm ninja build config ...&#34; cd $LLVM_BUILD_DIR cmake -G &#34;Ninja&#34; \ -DCMAKE_OSX_DEPLOYMENT_TARGET=&#34;10.14&#34; \ -DCMAKE_OSX_SYSROOT=&#34;macosx&#34; \ -DCMAKE_OSX_ARCHITECTURES=&#39;x86_64&#39; \ -DLLVM_TARGETS_TO_BUILD=&#34;X86&#34; \ -DCMAKE_BUILD_TYPE=Release \ -DCMAKE_INSTALL_PREFIX=$LLVM_OUT_DIR \ $SOURCE_CODE_DIR/llvm echo &#34;ninja build llvm ...&#34; ninja install } function build_clang() { echo &#34;generate clang ninja build config ." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://blog.0x1306a94.com/docs/llvm/ch01/01/" /><meta property="article:section" content="docs" />
+<meta property="article:published_time" content="2020-12-20T13:53:29+08:00" />
+<meta property="article:modified_time" content="2022-06-16T13:06:12+08:00" />
+
+<title>自定义 LLVM PASS 实现 函数耗时插桩统计 | 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+
+
+<link rel="stylesheet" href="/book.min.e56ae18661d37ebd7511f1db8c09f79d77ae712cf40a3d7441d2603da99ed001.css" integrity="sha256-5WrhhmHTfr11EfHbjAn3nXeucSz0Cj10QdJgPame0AE=">
+
+
+<script defer src="/en.search.min.7842bdd1df86a43bced2fa8e8d67fa7ccd10896c9fc845351ebf8a8e1899909b.js" integrity="sha256-eEK90d&#43;GpDvO0vqOjWf6fM0QiWyfyEU1Hr&#43;KjhiZkJs="></script>
+
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+</head>
+
+<body>
+  <input type="checkbox" class="hidden" id="menu-control" />
+  <main class="container flex">
+    <aside class="book-menu">
+      
+  <nav>
+<h2 class="book-brand">
+  <a href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+
+
+
+
+
+
+
+
+
+  <ul>
+<li><a href="/">序章</a></li>
+<li>Swift
+<ul>
+<li><a href="/docs/swift/ch01/01/">Swift Substring</a></li>
+</ul>
+</li>
+<li>iOS
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/ios/runtime/ch01/01/">Objective-C 关联对象原理</a></li>
+</ul>
+</li>
+<li>UI
+<ul>
+<li><a href="/docs/ios/ui/ch01/01/">实现抖音评论列表效果</a></li>
+<li><a href="/docs/ios/ui/ch02/02/">全屏Feed ScrollView嵌套时滑动问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>WWDC 22
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/wwdc22/ch01/01/">Runtime Performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LLVM
+<ul>
+<li><a href="/docs/llvm/ch01/01/"class=active>自定义 LLVM PASS 实现 函数耗时插桩统计</a></li>
+<li><a href="/docs/llvm/ch02/02/">基于 LibTooling 生成 C++ 的 Objective-C++ 包装接口想法初步验证</a></li>
+</ul>
+</li>
+<li>其他
+<ul>
+<li>FFmpeg
+<ul>
+<li><a href="/docs/other/ffmpeg/ch01/01/">iOS 使用 FFmepeg 命令行工具源码实现转码功能</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside.book-menu nav");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+ 
+    </aside>
+
+    <div class="book-page">
+      <header class="book-header">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <strong>自定义 LLVM PASS 实现 函数耗时插桩统计</strong>
+
+  <label for="toc-control">
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+  </label>
+</div>
+
+
+  
+    <input type="checkbox" class="hidden" id="toc-control" />
+    <aside class="hidden clearfix">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+    </aside>
+  
+ 
+      </header>
+
+      
+<article class="markdown">
+  <h1>自定义 LLVM PASS 实现 函数耗时插桩统计</h1><h4 id="下载源码">下载源码</h4>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>mkdir LLVM
+</span></span><span style="display:flex;"><span>cd LLVM
+</span></span><span style="display:flex;"><span>wget https://github.com/llvm/llvm-project/archive/llvmorg-11.0.0.zip
+</span></span><span style="display:flex;"><span>unzip llvmorg-11.0.0.zip
+</span></span></code></pre></div><h4 id="编写编译脚本">编写编译脚本</h4>
+<ul>
+<li>在 <code>LLVM</code> 目录下,创建一个<code>build.sh</code>文件,拷贝下面内容</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span><span style="color:#75715e">#!/usr/bin/env bash
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>set -e
+</span></span><span style="display:flex;"><span>set -o pipefail
+</span></span><span style="display:flex;"><span>set -u
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ROOT_DIR<span style="color:#f92672">=</span><span style="color:#e6db74">`</span>pwd<span style="color:#e6db74">`</span>
+</span></span><span style="display:flex;"><span>SOURCE_CODE_DIR<span style="color:#f92672">=</span>$ROOT_DIR/llvm-project-llvmorg-11.0.0
+</span></span><span style="display:flex;"><span>BUILD_DIR<span style="color:#f92672">=</span>$ROOT_DIR/build_dir
+</span></span><span style="display:flex;"><span>LLVM_BUILD_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_llvm
+</span></span><span style="display:flex;"><span>LLVM_OUT_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_llvm_out
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>CLANG_BUILD_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_clang
+</span></span><span style="display:flex;"><span>CLANG_OUT_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_clang_out
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>XCODE_BUILD_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_xcode
+</span></span><span style="display:flex;"><span>XCODE_OUT_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_xcode_out
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> build_llvm<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;generate llvm ninja build config ...&#34;</span>
+</span></span><span style="display:flex;"><span>    cd $LLVM_BUILD_DIR
+</span></span><span style="display:flex;"><span>    cmake -G <span style="color:#e6db74">&#34;Ninja&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_DEPLOYMENT_TARGET<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;10.14&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_SYSROOT<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;macosx&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_ARCHITECTURES<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;x86_64&#39;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DLLVM_TARGETS_TO_BUILD<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;X86&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_BUILD_TYPE<span style="color:#f92672">=</span>Release <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_INSTALL_PREFIX<span style="color:#f92672">=</span>$LLVM_OUT_DIR <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    $SOURCE_CODE_DIR/llvm
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;ninja build llvm ...&#34;</span>
+</span></span><span style="display:flex;"><span>    ninja install
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> build_clang<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;generate clang ninja build config ...&#34;</span>
+</span></span><span style="display:flex;"><span>    cd $CLANG_BUILD_DIR
+</span></span><span style="display:flex;"><span>    cmake -G <span style="color:#e6db74">&#34;Ninja&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_PREFIX_PATH<span style="color:#f92672">=</span>$LLVM_OUT_DIR/lib/cmake/llvm <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_DEPLOYMENT_TARGET<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;10.14&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_SYSROOT<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;macosx&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_ARCHITECTURES<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;x86_64&#39;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DLLVM_TARGETS_TO_BUILD<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;X86&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_BUILD_TYPE<span style="color:#f92672">=</span>Release <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_INSTALL_PREFIX<span style="color:#f92672">=</span>$CLANG_OUT_DIR <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    $SOURCE_CODE_DIR/clang
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;ninja build clang ...&#34;</span>
+</span></span><span style="display:flex;"><span>    ninja install
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> generate_xcode_project<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    cd $XCODE_BUILD_DIR
+</span></span><span style="display:flex;"><span>    cmake -G <span style="color:#e6db74">&#34;Xcode&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_DEPLOYMENT_TARGET<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;10.14&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_SYSROOT<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;macosx&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_OSX_ARCHITECTURES<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;x86_64&#39;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DLLVM_TARGETS_TO_BUILD<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;X86&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_BUILD_TYPE<span style="color:#f92672">=</span>Release <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    -DCMAKE_INSTALL_PREFIX<span style="color:#f92672">=</span>$XCODE_OUT_DIR <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span><span style="color:#ae81ff"></span>    $SOURCE_CODE_DIR/llvm
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> clear_build<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;clear build dir&#34;</span>
+</span></span><span style="display:flex;"><span>    rm -rf $BUILD_DIR
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> usage<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;Usage:&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;build.sh -b -x&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;Description:&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;-b, build llvm and clang&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;-x, generate xcode project&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;-c, clear build dir&#34;</span>
+</span></span><span style="display:flex;"><span>    exit <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> onCtrlC <span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    clear_build
+</span></span><span style="display:flex;"><span>    exit <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>BUILD_FLAG<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>GENERATE_XCODE_FLAG<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span>CLEAR_BUILD_FLAG<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">while</span> getopts <span style="color:#e6db74">&#39;hbxc&#39;</span> OPT; <span style="color:#66d9ef">do</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">case</span> $OPT in
+</span></span><span style="display:flex;"><span>        b<span style="color:#f92672">)</span> BUILD_FLAG<span style="color:#f92672">=</span>1;;
+</span></span><span style="display:flex;"><span>        x<span style="color:#f92672">)</span> GENERATE_XCODE_FLAG<span style="color:#f92672">=</span>1;;
+</span></span><span style="display:flex;"><span>        c<span style="color:#f92672">)</span> CLEAR_BUILD_FLAG<span style="color:#f92672">=</span>1;;
+</span></span><span style="display:flex;"><span>        h<span style="color:#f92672">)</span> usage;;
+</span></span><span style="display:flex;"><span>        ?<span style="color:#f92672">)</span> usage;;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">esac</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">done</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> <span style="color:#f92672">[[</span> $CLEAR_BUILD_FLAG <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">]]</span>; <span style="color:#66d9ef">then</span>
+</span></span><span style="display:flex;"><span>    clear_build
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">fi</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">if</span> <span style="color:#f92672">[[</span> $BUILD_FLAG <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">]]</span>; <span style="color:#66d9ef">then</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e"># trap &#39;onCtrlC&#39; INT</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    startTime_s<span style="color:#f92672">=</span><span style="color:#e6db74">`</span>date +%s<span style="color:#e6db74">`</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> <span style="color:#f92672">[[</span> $GENERATE_XCODE_FLAG <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span> <span style="color:#f92672">]]</span>; <span style="color:#66d9ef">then</span>
+</span></span><span style="display:flex;"><span>        mkdir -p $XCODE_BUILD_DIR
+</span></span><span style="display:flex;"><span>        generate_xcode_project
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">else</span>
+</span></span><span style="display:flex;"><span>        mkdir -p $LLVM_BUILD_DIR $CLANG_BUILD_DIR
+</span></span><span style="display:flex;"><span>        build_llvm
+</span></span><span style="display:flex;"><span>        build_clang
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">fi</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    endTime_s<span style="color:#f92672">=</span><span style="color:#e6db74">`</span>date +%s<span style="color:#e6db74">`</span>
+</span></span><span style="display:flex;"><span>    sumTime<span style="color:#f92672">=</span>$<span style="color:#f92672">[</span> $endTime_s - $startTime_s <span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;开始: </span><span style="color:#66d9ef">$(</span>date -r $startTime_s +%Y%m%d-%H:%M:%S<span style="color:#66d9ef">)</span><span style="color:#e6db74">&#34;</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;结束: </span><span style="color:#66d9ef">$(</span>date -r $endTime_s +%Y%m%d-%H:%M:%S<span style="color:#66d9ef">)</span><span style="color:#e6db74">&#34;</span>
+</span></span><span style="display:flex;"><span>    hour<span style="color:#f92672">=</span>$<span style="color:#f92672">[</span> $sumTime / <span style="color:#ae81ff">3600</span> <span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>    minutes<span style="color:#f92672">=</span>$<span style="color:#f92672">[</span> <span style="color:#f92672">(</span>$sumTime - <span style="color:#f92672">(</span>$hour * 3600<span style="color:#f92672">))</span> / <span style="color:#ae81ff">60</span> <span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>    seconds<span style="color:#f92672">=</span>$<span style="color:#f92672">[</span> <span style="color:#f92672">(</span>$sumTime - <span style="color:#f92672">(</span>$hour * 3600<span style="color:#f92672">))</span> % <span style="color:#ae81ff">60</span> <span style="color:#f92672">]</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;耗时：</span>$hour<span style="color:#e6db74">:</span>$minutes<span style="color:#e6db74">:</span>$seconds<span style="color:#e6db74">&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">fi</span>
+</span></span></code></pre></div><h4 id="创建pass工程">创建<code>PASS</code>工程</h4>
+<ul>
+<li>进入<code>llvm-project-llvmorg-11.0.0/llvm/lib/Transforms</code> 目录</li>
+<li>将 <code>Hello</code> 目录拷贝一份,并重命名为 <code>FunctionCallTime</code></li>
+<li>在 <code>llvm-project-llvmorg-11.0.0/llvm/lib/Transforms/CMakeLists.txt</code> 后面追加一行 <code>add_subdirectory(FunctionCallTime)</code></li>
+<li>在 <code>llvm-project-llvmorg-11.0.0/llvm/lib/Transforms/LLVMBuild.txt</code> <code>subdirectories</code> 后面追加 <code>FunctionCallTime</code></li>
+<li>修改 <code>FunctionCallTime/CMakeLists.txt</code> 为下面内容</li>
+</ul>
+<pre tabindex="0"><code class="language-camke" data-lang="camke"># If we don&#39;t need RTTI or EH, there&#39;s no reason to export anything
+# from the hello plugin.
+if( NOT LLVM_REQUIRES_RTTI )
+if( NOT LLVM_REQUIRES_EH )
+  set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_CURRENT_SOURCE_DIR}/FunctionCallTime.exports)
+endif()
+endif()
+
+if(WIN32 OR CYGWIN)
+set(LLVM_LINK_COMPONENTS Core Support)
+endif()
+
+set(LLVM_LINK_COMPONENTS Demangle)
+
+add_llvm_library( LLVMFunctionCallTime MODULE BUILDTREE_ONLY
+FunctionCallTime.cpp
+
+DEPENDS
+intrinsics_gen
+PLUGIN_TOOL
+opt
+)
+</code></pre><ul>
+<li>将 <code>Hello.cpp</code> 重命名为 <code>FunctionCallTime.cpp</code>, <code>Hello.exports</code> 重命名为 <code>FunctionCallTime.exports</code></li>
+<li>将<code>FunctionCallTime.cpp</code> 内容替换为下面</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  function_call_time.cpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  function-call-time
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  Created by king on 2020/12/18.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&lt;iostream&gt;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/ADT/Statistic.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Demangle/Demangle.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/BasicBlock.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Constants.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Function.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/IRBuilder.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Instruction.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Instructions.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/LegacyPassManager.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Module.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/IR/Value.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Pass.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Support/raw_ostream.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Transforms/IPO/PassManagerBuilder.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> llvm;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">namespace</span> {
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">FunctionCallTimePass</span> <span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> FunctionPass {
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">static</span> <span style="color:#66d9ef">char</span> ID;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">static</span> StringRef InsertFuncNamePrefix;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">static</span> StringRef BeginFuncName;
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">static</span> StringRef EndFuncName;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	FunctionCallTimePass()
+</span></span><span style="display:flex;"><span>	    <span style="color:#f92672">:</span> FunctionPass(ID) {}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">runOnFunction</span>(Function <span style="color:#f92672">&amp;</span>F) <span style="color:#66d9ef">override</span> {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> (F.empty()) {
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		std<span style="color:#f92672">::</span>string annotation <span style="color:#f92672">=</span> readAnnotate(<span style="color:#f92672">&amp;</span>F);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">auto</span> funcName <span style="color:#f92672">=</span> F.getName();
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 可以通过 __attribute__((__annotate__((&#34;ignore_appletrace&#34;))))
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#75715e">// 忽略当前函数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#66d9ef">if</span> (annotation.length() <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>		    StringRef(annotation).contains(<span style="color:#e6db74">&#34;ignore_appletrace&#34;</span>)) {
+</span></span><span style="display:flex;"><span>			errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;function-call-time: &#34;</span> <span style="color:#f92672">&lt;&lt;</span> funcName <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34; 忽略 annotation&#34;</span>
+</span></span><span style="display:flex;"><span>			       <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// Objective-C 方法前面有 \x01
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#66d9ef">if</span> (funcName.front() <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;\x01&#39;</span>) {
+</span></span><span style="display:flex;"><span>			funcName <span style="color:#f92672">=</span> funcName.drop_front();
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> (funcName.startswith(<span style="color:#e6db74">&#34;__Z&#34;</span>) <span style="color:#f92672">||</span> funcName.startswith(<span style="color:#e6db74">&#34;_Z&#34;</span>)) {
+</span></span><span style="display:flex;"><span>			<span style="color:#75715e">// C++ 函数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			std<span style="color:#f92672">::</span>string str       <span style="color:#f92672">=</span> funcName.str();
+</span></span><span style="display:flex;"><span>			std<span style="color:#f92672">::</span>string demangled <span style="color:#f92672">=</span> demangle(str);
+</span></span><span style="display:flex;"><span>			funcName              <span style="color:#f92672">=</span> StringRef(demangled);
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 将统计代码调用过滤掉
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#66d9ef">if</span> (funcName.startswith(<span style="color:#e6db74">&#34;appletrace&#34;</span>)) {
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 如果是插桩的函数直接跳过
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#66d9ef">if</span> (F.getName().startswith(FunctionCallTimePass<span style="color:#f92672">::</span>InsertFuncNamePrefix)) {
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 只统计 Objective-C 方法调用
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		<span style="color:#66d9ef">if</span> (funcName.startswith(<span style="color:#e6db74">&#34;+[&#34;</span>) <span style="color:#f92672">||</span> funcName.startswith(<span style="color:#e6db74">&#34;-[&#34;</span>)) {
+</span></span><span style="display:flex;"><span>			<span style="color:#75715e">// 2. 插入开始
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			<span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>insertBeginInst(F)) {
+</span></span><span style="display:flex;"><span>				<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>			}
+</span></span><span style="display:flex;"><span>			<span style="color:#75715e">// 3. 插入结束
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			insertEndInst(F);
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">private</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>	std<span style="color:#f92672">::</span>string readAnnotate(Function <span style="color:#f92672">*</span>f) {
+</span></span><span style="display:flex;"><span>		std<span style="color:#f92672">::</span>string annotation <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;&#34;</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// Get annotation variable
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		GlobalVariable <span style="color:#f92672">*</span>glob <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>		    f<span style="color:#f92672">-&gt;</span>getParent()<span style="color:#f92672">-&gt;</span>getGlobalVariable(<span style="color:#e6db74">&#34;llvm.global.annotations&#34;</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> (glob <span style="color:#f92672">!=</span> NULL) {
+</span></span><span style="display:flex;"><span>			<span style="color:#75715e">// Get the array
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			<span style="color:#66d9ef">if</span> (ConstantArray <span style="color:#f92672">*</span>ca <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>ConstantArray<span style="color:#f92672">&gt;</span>(glob<span style="color:#f92672">-&gt;</span>getInitializer())) {
+</span></span><span style="display:flex;"><span>				<span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">unsigned</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> ca<span style="color:#f92672">-&gt;</span>getNumOperands(); <span style="color:#f92672">++</span>i) {
+</span></span><span style="display:flex;"><span>					<span style="color:#75715e">// Get the struct
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>					<span style="color:#66d9ef">if</span> (ConstantStruct <span style="color:#f92672">*</span>structAn <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>					        dyn_cast<span style="color:#f92672">&lt;</span>ConstantStruct<span style="color:#f92672">&gt;</span>(ca<span style="color:#f92672">-&gt;</span>getOperand(i))) {
+</span></span><span style="display:flex;"><span>						<span style="color:#66d9ef">if</span> (ConstantExpr <span style="color:#f92672">*</span>expr <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>						        dyn_cast<span style="color:#f92672">&lt;</span>ConstantExpr<span style="color:#f92672">&gt;</span>(structAn<span style="color:#f92672">-&gt;</span>getOperand(<span style="color:#ae81ff">0</span>))) {
+</span></span><span style="display:flex;"><span>							<span style="color:#75715e">// If it&#39;s a bitcast we can check if the annotation is concerning
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>							<span style="color:#75715e">// the current function
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>							<span style="color:#66d9ef">if</span> (expr<span style="color:#f92672">-&gt;</span>getOpcode() <span style="color:#f92672">==</span> Instruction<span style="color:#f92672">::</span>BitCast <span style="color:#f92672">&amp;&amp;</span>
+</span></span><span style="display:flex;"><span>							    expr<span style="color:#f92672">-&gt;</span>getOperand(<span style="color:#ae81ff">0</span>) <span style="color:#f92672">==</span> f) {
+</span></span><span style="display:flex;"><span>								ConstantExpr <span style="color:#f92672">*</span>note <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>								    cast<span style="color:#f92672">&lt;</span>ConstantExpr<span style="color:#f92672">&gt;</span>(structAn<span style="color:#f92672">-&gt;</span>getOperand(<span style="color:#ae81ff">1</span>));
+</span></span><span style="display:flex;"><span>								<span style="color:#75715e">// If it&#39;s a GetElementPtr, that means we found the variable
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>								<span style="color:#75715e">// containing the annotations
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>								<span style="color:#66d9ef">if</span> (note<span style="color:#f92672">-&gt;</span>getOpcode() <span style="color:#f92672">==</span> Instruction<span style="color:#f92672">::</span>GetElementPtr) {
+</span></span><span style="display:flex;"><span>									<span style="color:#66d9ef">if</span> (GlobalVariable <span style="color:#f92672">*</span>annoteStr <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>									        dyn_cast<span style="color:#f92672">&lt;</span>GlobalVariable<span style="color:#f92672">&gt;</span>(note<span style="color:#f92672">-&gt;</span>getOperand(<span style="color:#ae81ff">0</span>))) {
+</span></span><span style="display:flex;"><span>										<span style="color:#66d9ef">if</span> (ConstantDataSequential <span style="color:#f92672">*</span>data <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>										        dyn_cast<span style="color:#f92672">&lt;</span>ConstantDataSequential<span style="color:#f92672">&gt;</span>(
+</span></span><span style="display:flex;"><span>										            annoteStr<span style="color:#f92672">-&gt;</span>getInitializer())) {
+</span></span><span style="display:flex;"><span>											<span style="color:#66d9ef">if</span> (data<span style="color:#f92672">-&gt;</span>isString()) {
+</span></span><span style="display:flex;"><span>												annotation <span style="color:#f92672">+=</span> data<span style="color:#f92672">-&gt;</span>getAsString().lower() <span style="color:#f92672">+</span> <span style="color:#e6db74">&#34; &#34;</span>;
+</span></span><span style="display:flex;"><span>											}
+</span></span><span style="display:flex;"><span>										}
+</span></span><span style="display:flex;"><span>									}
+</span></span><span style="display:flex;"><span>								}
+</span></span><span style="display:flex;"><span>							}
+</span></span><span style="display:flex;"><span>						}
+</span></span><span style="display:flex;"><span>					}
+</span></span><span style="display:flex;"><span>				}
+</span></span><span style="display:flex;"><span>			}
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> annotation;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">insertBeginInst</span>(Function <span style="color:#f92672">&amp;</span>F) {
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 0.函数最开始的BasicBlock
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		LLVMContext <span style="color:#f92672">&amp;</span>context <span style="color:#f92672">=</span> F.getParent()<span style="color:#f92672">-&gt;</span>getContext();
+</span></span><span style="display:flex;"><span>		BasicBlock <span style="color:#f92672">&amp;</span>BB       <span style="color:#f92672">=</span> F.getEntryBlock();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 1. 获取要插入的函数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		FunctionCallee beginFun <span style="color:#f92672">=</span> F.getParent()<span style="color:#f92672">-&gt;</span>getOrInsertFunction(
+</span></span><span style="display:flex;"><span>		    FunctionCallTimePass<span style="color:#f92672">::</span>BeginFuncName,
+</span></span><span style="display:flex;"><span>		    FunctionType<span style="color:#f92672">::</span>get(Type<span style="color:#f92672">::</span>getVoidTy(context),
+</span></span><span style="display:flex;"><span>		                      {Type<span style="color:#f92672">::</span>getInt8PtrTy(context)}, false));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;function-call-time: &#34;</span> <span style="color:#f92672">&lt;&lt;</span> BB.getParent()<span style="color:#f92672">-&gt;</span>getName() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34; begin</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 2. 构造函数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		CallInst <span style="color:#f92672">*</span>inst <span style="color:#f92672">=</span> <span style="color:#66d9ef">nullptr</span>;
+</span></span><span style="display:flex;"><span>		IRBuilder<span style="color:#f92672">&lt;&gt;</span> builder(<span style="color:#f92672">&amp;</span>BB);
+</span></span><span style="display:flex;"><span>		IRBuilder<span style="color:#f92672">&lt;&gt;</span> callBuilder(context);
+</span></span><span style="display:flex;"><span>		Value <span style="color:#f92672">*</span>name <span style="color:#f92672">=</span> builder.CreateGlobalStringPtr(BB.getParent()<span style="color:#f92672">-&gt;</span>getName());
+</span></span><span style="display:flex;"><span>		inst        <span style="color:#f92672">=</span> callBuilder.CreateCall(beginFun, {name});
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>inst) {
+</span></span><span style="display:flex;"><span>			llvm<span style="color:#f92672">::</span>errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;Create First CallInst Failed</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">return</span> false;
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 3. 获取函数开始的第一条指令
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		Instruction <span style="color:#f92672">*</span>beginInst <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>Instruction<span style="color:#f92672">&gt;</span>(BB.begin());
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 4. 将inst插入
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>		inst<span style="color:#f92672">-&gt;</span>insertBefore(beginInst);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">return</span> true;
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>	<span style="color:#66d9ef">void</span> <span style="color:#a6e22e">insertEndInst</span>(Function <span style="color:#f92672">&amp;</span>F) {
+</span></span><span style="display:flex;"><span>		LLVMContext <span style="color:#f92672">&amp;</span>context <span style="color:#f92672">=</span> F.getParent()<span style="color:#f92672">-&gt;</span>getContext();
+</span></span><span style="display:flex;"><span>		<span style="color:#66d9ef">for</span> (Function<span style="color:#f92672">::</span>iterator I <span style="color:#f92672">=</span> F.begin(), E <span style="color:#f92672">=</span> F.end(); I <span style="color:#f92672">!=</span> E; <span style="color:#f92672">++</span>I) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>			<span style="color:#75715e">//  函数结尾的BasicBlock
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>			BasicBlock <span style="color:#f92672">&amp;</span>BB <span style="color:#f92672">=</span> <span style="color:#f92672">*</span>I;
+</span></span><span style="display:flex;"><span>			<span style="color:#66d9ef">for</span> (BasicBlock<span style="color:#f92672">::</span>iterator I <span style="color:#f92672">=</span> BB.begin(), E <span style="color:#f92672">=</span> BB.end(); I <span style="color:#f92672">!=</span> E; <span style="color:#f92672">++</span>I) {
+</span></span><span style="display:flex;"><span>				ReturnInst <span style="color:#f92672">*</span>IST <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>ReturnInst<span style="color:#f92672">&gt;</span>(I);
+</span></span><span style="display:flex;"><span>				<span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>IST)
+</span></span><span style="display:flex;"><span>					<span style="color:#66d9ef">continue</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>				<span style="color:#75715e">// end_func 类型
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>				FunctionType <span style="color:#f92672">*</span>endFuncType <span style="color:#f92672">=</span> FunctionType<span style="color:#f92672">::</span>get(
+</span></span><span style="display:flex;"><span>				    Type<span style="color:#f92672">::</span>getVoidTy(context), {Type<span style="color:#f92672">::</span>getInt8PtrTy(context)}, false);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>				<span style="color:#75715e">// end_func
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>				FunctionCallee endFunc <span style="color:#f92672">=</span> BB.getModule()<span style="color:#f92672">-&gt;</span>getOrInsertFunction(
+</span></span><span style="display:flex;"><span>				    FunctionCallTimePass<span style="color:#f92672">::</span>EndFuncName, endFuncType);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>				<span style="color:#75715e">// 构造end_func
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>				IRBuilder<span style="color:#f92672">&lt;&gt;</span> builder(<span style="color:#f92672">&amp;</span>BB);
+</span></span><span style="display:flex;"><span>				IRBuilder<span style="color:#f92672">&lt;&gt;</span> callBuilder(context);
+</span></span><span style="display:flex;"><span>				Value <span style="color:#f92672">*</span>name     <span style="color:#f92672">=</span> builder.CreateGlobalStringPtr(BB.getParent()<span style="color:#f92672">-&gt;</span>getName());
+</span></span><span style="display:flex;"><span>				CallInst <span style="color:#f92672">*</span>endCI <span style="color:#f92672">=</span> callBuilder.CreateCall(endFunc, {name});
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>				<span style="color:#75715e">// 插入end_func(struction)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>				endCI<span style="color:#f92672">-&gt;</span>insertBefore(IST);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>				errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;function-call-time: &#34;</span> <span style="color:#f92672">&lt;&lt;</span> BB.getParent()<span style="color:#f92672">-&gt;</span>getName()
+</span></span><span style="display:flex;"><span>				       <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34; end</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>			}
+</span></span><span style="display:flex;"><span>		}
+</span></span><span style="display:flex;"><span>	}
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>}  <span style="color:#75715e">// namespace
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">char</span> FunctionCallTimePass<span style="color:#f92672">::</span>ID                        <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>StringRef FunctionCallTimePass<span style="color:#f92672">::</span>InsertFuncNamePrefix <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;_kk_APT&#34;</span>;
+</span></span><span style="display:flex;"><span>StringRef FunctionCallTimePass<span style="color:#f92672">::</span>BeginFuncName        <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;_kk_APTBeginSection&#34;</span>;
+</span></span><span style="display:flex;"><span>StringRef FunctionCallTimePass<span style="color:#f92672">::</span>EndFuncName          <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;_kk_APTEndSection&#34;</span>;
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 注册给 opt
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// opt -load LLVMFunctionCallTime.dylib -function-call-time xx.bc
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> RegisterPass<span style="color:#f92672">&lt;</span>FunctionCallTimePass<span style="color:#f92672">&gt;</span>
+</span></span><span style="display:flex;"><span>    X(<span style="color:#e6db74">&#34;function-call-time&#34;</span>, <span style="color:#e6db74">&#34;Function calls take time to collect&#34;</span>, false,
+</span></span><span style="display:flex;"><span>      false);
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 注册给 clang 通过 -Xclang -load -Xclang LLVMFunctionCallTime.dylib
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> RegisterStandardPasses <span style="color:#a6e22e">Y</span>(PassManagerBuilder<span style="color:#f92672">::</span>EP_EarlyAsPossible,
+</span></span><span style="display:flex;"><span>                                [](<span style="color:#66d9ef">const</span> PassManagerBuilder <span style="color:#f92672">&amp;</span>Builder,
+</span></span><span style="display:flex;"><span>                                   legacy<span style="color:#f92672">::</span>PassManagerBase <span style="color:#f92672">&amp;</span>PM) {
+</span></span><span style="display:flex;"><span>	                                PM.add(<span style="color:#66d9ef">new</span> FunctionCallTimePass());
+</span></span><span style="display:flex;"><span>                                });
+</span></span></code></pre></div><h4 id="创建xcode工程">创建<code>Xcode</code>工程</h4>
+<ul>
+<li>需要安装<code>cmake</code></li>
+<li>进入 <code>LLVM</code> 目录下执行</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>chmod +x ./build.sh <span style="color:#75715e"># 只需要执行一次</span>
+</span></span><span style="display:flex;"><span>./build.sh -b -x
+</span></span></code></pre></div><ul>
+<li>执行成功后,会在<code>LLVM</code>目录下生成<code>build_dir</code>目录</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-text" data-lang="text"><span style="display:flex;"><span>build_dir
+</span></span><span style="display:flex;"><span>└── build_xcode
+</span></span><span style="display:flex;"><span>    ├── CMakeCache.txt
+</span></span><span style="display:flex;"><span>    ├── CMakeFiles
+</span></span><span style="display:flex;"><span>    ├── CMakeScripts
+</span></span><span style="display:flex;"><span>    ├── CPackConfig.cmake
+</span></span><span style="display:flex;"><span>    ├── CPackSourceConfig.cmake
+</span></span><span style="display:flex;"><span>    ├── Debug
+</span></span><span style="display:flex;"><span>    ├── LLVM.xcodeproj
+</span></span><span style="display:flex;"><span>    ├── LLVMBuild.cmake
+</span></span><span style="display:flex;"><span>    ├── MinSizeRel
+</span></span><span style="display:flex;"><span>    ├── RelWithDebInfo
+</span></span><span style="display:flex;"><span>    ├── Release
+</span></span><span style="display:flex;"><span>    ├── benchmarks
+</span></span><span style="display:flex;"><span>    ├── build
+</span></span><span style="display:flex;"><span>    ├── cmake
+</span></span><span style="display:flex;"><span>    ├── cmake_install.cmake
+</span></span><span style="display:flex;"><span>    ├── docs
+</span></span><span style="display:flex;"><span>    ├── examples
+</span></span><span style="display:flex;"><span>    ├── include
+</span></span><span style="display:flex;"><span>    ├── lib
+</span></span><span style="display:flex;"><span>    ├── llvm.spec
+</span></span><span style="display:flex;"><span>    ├── projects
+</span></span><span style="display:flex;"><span>    ├── runtimes
+</span></span><span style="display:flex;"><span>    ├── test
+</span></span><span style="display:flex;"><span>    ├── tools
+</span></span><span style="display:flex;"><span>    ├── unittests
+</span></span><span style="display:flex;"><span>    └── utils
+</span></span></code></pre></div><ul>
+<li>打开 <code>LLVM.xcodeproj</code>, 会提示创建<code>scheme</code>, 可以选择自动,也可以选择手动, <code>Pass scheme</code> 为<code>LLVMFunctionCallTime</code></li>
+<li><code>FunctionCallTime Pass target</code> 在 <code>Loadable modules</code> 下面</li>
+<li>选择<code>LLVMFunctionCallTime</code> <code>command + b</code> 进行编译</li>
+<li>默认是<code>Debug</code>模式,所以<code>LLVMFunctionCallTime.dylib</code>产物在<code>build_dir/build_xcode/Debug/lib/LLVMFunctionCallTime.dylib</code></li>
+</ul>
+<h4 id="使用-pass">使用 <code>Pass</code></h4>
+<ul>
+<li>由于<code>Xcode</code>内置的<code>clang</code>,不支持加载自定义插件,所以直接从<code>LLVM Project</code> <code>Github</code> 仓库下载编译好的</li>
+<li>由于开始下载的源码为<code>LLVM 11.0.0</code>, 所以为了一致也是下载相同的版本</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>wget https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/clang+llvm-11.0.0-x86_64-apple-darwin.tar.xz
+</span></span><span style="display:flex;"><span>mkdir -p ./clang-11.0.0
+</span></span><span style="display:flex;"><span>tar xf clang+llvm-11.0.0-x86_64-apple-darwin.tar.xz -C ./clang-11.0.0 --strip-components <span style="color:#ae81ff">1</span>
+</span></span></code></pre></div><ul>
+<li>下载 <a href="https://github.com/everettjf/AppleTrace">everettjf/AppleTrace</a></li>
+<li>将 <code>appletrace.h</code> <code>appletrace.mm</code> 拖入你的工程中</li>
+<li>将<code>APTBeginSection</code> <code>APTEndSection</code> <code>APTSyncWait</code> 修改为 <code>_kk_APTBeginSection</code> <code>_kk_APTEndSection</code> <code>_kk_APTSyncWait</code>,为了便于区分在<code>Pass</code>里面指定了 <code>_kk_APT</code>前缀</li>
+<li>将<code>appletrace.mm</code> 中<code>WriteSection</code> 改为如下</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Objective-C" data-lang="Objective-C"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">WriteSection</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>name, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>ph) {
+</span></span><span style="display:flex;"><span>    pthread_t <span style="color:#66d9ef">thread</span>     <span style="color:#f92672">=</span> pthread_self();
+</span></span><span style="display:flex;"><span>    __uint64_t thread_id <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    pthread_threadid_np(<span style="color:#66d9ef">thread</span>, <span style="color:#f92672">&amp;</span>thread_id);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    uint64_t time    <span style="color:#f92672">=</span> mach_absolute_time() <span style="color:#f92672">*</span> timeinfo_.numer <span style="color:#f92672">/</span> timeinfo_.denom;
+</span></span><span style="display:flex;"><span>    uint64_t elapsed <span style="color:#f92672">=</span> (time <span style="color:#f92672">-</span> begin_) <span style="color:#f92672">/</span> <span style="color:#ae81ff">1000.0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (main_thread_id <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">&amp;&amp;</span> pthread_main_np() <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span>) {
+</span></span><span style="display:flex;"><span>        main_thread_id <span style="color:#f92672">=</span> thread_id;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (main_thread_id <span style="color:#f92672">==</span> thread_id) {
+</span></span><span style="display:flex;"><span>        thread_id <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;  <span style="color:#75715e">// just make main thread id zero
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 通过 llvm pass 插桩传递过来的 name 最前有个 \0x1 所以需要特殊处理下
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// 当然也可以直接在 pass 中处理好
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    NSString <span style="color:#f92672">*</span>str <span style="color:#f92672">=</span> nil;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (name[<span style="color:#ae81ff">0</span>] <span style="color:#f92672">==</span> <span style="color:#e6db74">&#39;\x01&#39;</span>) {
+</span></span><span style="display:flex;"><span>        str <span style="color:#f92672">=</span> [NSString stringWithFormat:<span style="color:#e6db74">@&#34;{</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">name</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">%s</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">cat</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">catname</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">ph</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">%s</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">pid</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:666,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">tid</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:%llu,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">ts</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:%llu}&#34;</span>,
+</span></span><span style="display:flex;"><span>                                             name <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>, ph, thread_id, elapsed];
+</span></span><span style="display:flex;"><span>    } <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>        str <span style="color:#f92672">=</span> [NSString stringWithFormat:<span style="color:#e6db74">@&#34;{</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">name</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">%s</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">cat</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">catname</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">ph</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">%s</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">pid</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:666,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">tid</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:%llu,</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">ts</span><span style="color:#ae81ff">\&#34;</span><span style="color:#e6db74">:%llu}&#34;</span>,
+</span></span><span style="display:flex;"><span>                                             name, ph, thread_id, elapsed];
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    dispatch_async(queue_, <span style="color:#f92672">^</span>{
+</span></span><span style="display:flex;"><span>        log_.AddLine(str.UTF8String);
+</span></span><span style="display:flex;"><span>    });
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><ul>
+<li>在你的工程中创建一个<code>xcconfig</code> 文件,内容如下</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>//
+</span></span><span style="display:flex;"><span>//  Config.xcconfig
+</span></span><span style="display:flex;"><span>//  PageLinkDemo
+</span></span><span style="display:flex;"><span>//
+</span></span><span style="display:flex;"><span>//  Created by king on 2020/12/18.
+</span></span><span style="display:flex;"><span>//
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>// Configuration settings file format documentation can be found at:
+</span></span><span style="display:flex;"><span>// https://help.apple.com/xcode/#/dev745c5c974
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>LLVM_DIR <span style="color:#f92672">=</span> $HOME/Documents/LLVM <span style="color:#75715e"># 修改为在你本机的实际路径</span>
+</span></span><span style="display:flex;"><span>PASS_DYLIB <span style="color:#f92672">=</span> <span style="color:#66d9ef">$(</span>LLVM_DIR<span style="color:#66d9ef">)</span>/build_dir/build_xcode/Debug/lib/LLVMFunctionCallTime.dylib
+</span></span><span style="display:flex;"><span>OTHER_CFLAGS <span style="color:#f92672">=</span> <span style="color:#66d9ef">$(</span>inherited<span style="color:#66d9ef">)</span> -Xclang -load -Xclang <span style="color:#66d9ef">$(</span>PASS_DYLIB<span style="color:#66d9ef">)</span>
+</span></span><span style="display:flex;"><span>OTHER_CPLUSPLUSFLAGS <span style="color:#f92672">=</span> <span style="color:#66d9ef">$(</span>inherited<span style="color:#66d9ef">)</span> -Xclang -load -Xclang <span style="color:#66d9ef">$(</span>PASS_DYLIB<span style="color:#66d9ef">)</span>
+</span></span><span style="display:flex;"><span>COMPILER_INDEX_STORE_ENABLE <span style="color:#f92672">=</span> NO
+</span></span><span style="display:flex;"><span>CC <span style="color:#f92672">=</span> <span style="color:#66d9ef">$(</span>LLVM_DIR<span style="color:#66d9ef">)</span>/clang-11.0.0/bin/clang
+</span></span><span style="display:flex;"><span>CXX <span style="color:#f92672">=</span> <span style="color:#66d9ef">$(</span>LLVM_DIR<span style="color:#66d9ef">)</span>clang-11.0.0/bin/clang++
+</span></span></code></pre></div><ul>
+<li>修改工程配置</li>
+</ul>
+<p><img src="./QQ20201220-145842@2x.png" alt=""></p>
+<ul>
+<li>然后进行编译,如果没有错误,则会在<code>Xcode</code>编译日志中可以看到相关日志,如下图</li>
+</ul>
+<p><img src="./QQ20201220-150302@2x.png" alt=""></p>
+<ul>
+<li>由于<code>qmuidemo</code> 依赖了 <code>qmui</code> 子工程,所以我将 <code>appletrace.h</code> <code>appletrace.mm</code> 放到了 <code>qmui</code>工程中,这样主工程和子工程则都能进行插桩</li>
+<li>运行你的项目后,会在<code>Xcode</code>控制台看到如下输出</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>2020-12-20 14:49:32.530027+0800 qmuidemo<span style="color:#f92672">[</span>25684:1347559<span style="color:#f92672">]</span> log path <span style="color:#f92672">=</span> /Users/king/Library/Developer/CoreSimulator/Devices/71211D11-6169-4508-BBD8-B38958350C8F/data/Containers/Data/Application/46E933FE-D962-4355-9E0D-F8CBA44ABFA7/Library/appletracedata/trace.appletrace
+</span></span></code></pre></div><h4 id="使用everettjfappletracehttpsgithubcomeverettjfappletrace生成火焰图">使用<a href="https://github.com/everettjf/AppleTrace">everettjf/AppleTrace</a>生成火焰图</h4>
+<ul>
+<li>通过上面输出的<code>log path</code>,将<code>appletracedata</code>目录拷贝到 下载的<a href="https://github.com/everettjf/AppleTrace">everettjf/AppleTrace</a>中</li>
+<li>将下载的<a href="https://github.com/everettjf/AppleTrace">everettjf/AppleTrace</a> <code>merge.py</code> 中 <code>run</code>函数的<code>while</code>循环外面添加如下代码</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Python" data-lang="Python"><span style="display:flex;"><span>self<span style="color:#f92672">.</span>output<span style="color:#f92672">.</span>seek(<span style="color:#f92672">-</span><span style="color:#ae81ff">2</span>, os<span style="color:#f92672">.</span>SEEK_END)
+</span></span><span style="display:flex;"><span>self<span style="color:#f92672">.</span>output<span style="color:#f92672">.</span>truncate()
+</span></span><span style="display:flex;"><span>self<span style="color:#f92672">.</span>output<span style="color:#f92672">.</span>write(<span style="color:#e6db74">&#39;</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">]&#39;</span>)
+</span></span></code></pre></div><ul>
+<li>合并<code>appletracedata</code>目录下所有文件内容,输出为<code>JSON</code>文件</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>python merge.py -d ./appletracedata
+</span></span></code></pre></div><ul>
+<li>下载依赖</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>sh get_catapult.sh
+</span></span></code></pre></div><ul>
+<li>生成火焰图 HTML 文件</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span><span style="color:#75715e"># 生成</span>
+</span></span><span style="display:flex;"><span>python catapult/tracing/bin/trace2html appletracedata/trace.json --output<span style="color:#f92672">=</span>appletracedata/trace.html
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 打开预览</span>
+</span></span><span style="display:flex;"><span>open trace.html
+</span></span></code></pre></div><ul>
+<li><a href="./trace.html">预览 QMUIDemo 火焰图</a></li>
+</ul>
+<h4 id="使用xcode-调试-pass">使用<code>Xcode</code> 调试 <code>Pass</code></h4>
+<ul>
+<li>需要通过<code>opt</code>调试</li>
+<li>首先需要先编译好<code>Pass</code></li>
+<li>生成<code>IR</code>文件</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>clang -x objective-c++ -isysroot <span style="color:#66d9ef">$(</span>xcrun --sdk macosx --show-sdk-path<span style="color:#66d9ef">)</span> -S -emit-llvm -c xxx.m -o xx.ll
+</span></span></code></pre></div><ul>
+<li>切换为<code>opt</code> <code>scheme</code>, 选择<code>Edit Scheme</code> 设置 <code>opt</code>的启动参数,如下</li>
+</ul>
+<p><img src="./WX20201221-121015@2x.png" alt=""></p>
+<ul>
+<li>然后运行 <code>opt</code>, 由于<code>opt</code>依赖很多,所有需要编译很长时间,不过如果你是<code>40万</code>的<code>Mac Pro</code>,那么可能只需要几秒或者十几秒</li>
+<li>这样就可以直接在<code>Pass</code>源码中下断点</li>
+<li><a href="https://github.com/0x1306a94/LLVMFunctionCallTimePass">LLVMFunctionCallTimePass</a> 源码</li>
+</ul>
+<h4 id="参考">参考</h4>
+<ul>
+<li><a href="https://llvm.org/docs/WritingAnLLVMPass.html">Writing an LLVM Pass</a></li>
+<li><a href="http://www.helloted.com/ios/2020/09/22/clang-time/">Clang 插件统计方法耗时</a></li>
+</ul>
+
+    <div>
+      <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/edit/master/docs/llvm/ch01/01.md" target="_blank" rel="noopener">
+        <img src="/svg/edit.svg" class="book-icon" alt="Edit" />
+        <span>Edit this page</span>
+      </a>
+    </div>
+  
+  <hr/>
+  <img src="" style="max-width: 100%;"/>
+  
+</article>
+
+<div id="gitalk-container"></div>
+<link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script>
+    const gitalk = new Gitalk({
+        clientID: '2c62ad75ef03025b19a5',
+        clientSecret: '0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635',
+        repo: 'blog-comments',
+        owner: '0x1306a94',
+        admin: ['0x1306a94'],
+        id: location.pathname, 
+        distractionFreeMode: false 
+    });
+    (function() {
+        if (["localhost", "127.0.0.1"].indexOf(window.location.hostname) != -1) {
+            document.getElementById('gitalk-container').innerHTML = 'Gitalk comments not available by default when the website is previewed locally.';
+            return;
+        }
+        gitalk.render('gitalk-container');
+    })();
+</script>
+
+ 
+
+      <footer class="book-footer">
+        
+  <div class="flex justify-between">
+
+
+
+  <div>
+    
+    <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/commit/74ef10c01c70ea534ec72748c7833978a92a2105" title='Last modified by 0x1306a94 | June 16, 2022' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="Calendar" />
+      <span>June 16, 2022</span>
+    </a>
+  </div>
+
+</div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+      </footer>
+      
+    </div>
+
+    
+    <aside class="book-toc">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+ 
+    </aside>
+    
+  </main>
+
+  
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

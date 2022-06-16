@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Objective C 关联对象原理"><meta property="og:title" content="Objective C 关联对象原理" />
+<meta property="og:description" content="如何使用? 首先需要导入 &lt;objc/runtime.h&gt; 头文件
+然后通过 runtime 如下 API
+// 为 object 设置关联值 OBJC_EXPORT void objc_setAssociatedObject(id _Nonnull object, const void * _Nonnull key, id _Nullable value, objc_AssociationPolicy policy) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 获取 object 关联值 OBJC_EXPORT id _Nullable objc_getAssociatedObject(id _Nonnull object, const void * _Nonnull key) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 移除 object 所有关联值 OBJC_EXPORT void objc_removeAssociatedObjects(id _Nonnull object) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); 示例代码一
+#import &lt;Foundation/Foundation.h&gt; #import &lt;objc/runtime." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/" /><meta property="article:section" content="docs" />
+<meta property="article:published_time" content="2020-02-25T11:06:35+08:00" />
+<meta property="article:modified_time" content="2022-06-16T13:06:12+08:00" />
+
+<title>Objective C 关联对象原理 | 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+
+
+<link rel="stylesheet" href="/book.min.e56ae18661d37ebd7511f1db8c09f79d77ae712cf40a3d7441d2603da99ed001.css" integrity="sha256-5WrhhmHTfr11EfHbjAn3nXeucSz0Cj10QdJgPame0AE=">
+
+
+<script defer src="/en.search.min.7842bdd1df86a43bced2fa8e8d67fa7ccd10896c9fc845351ebf8a8e1899909b.js" integrity="sha256-eEK90d&#43;GpDvO0vqOjWf6fM0QiWyfyEU1Hr&#43;KjhiZkJs="></script>
+
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+</head>
+
+<body>
+  <input type="checkbox" class="hidden" id="menu-control" />
+  <main class="container flex">
+    <aside class="book-menu">
+      
+  <nav>
+<h2 class="book-brand">
+  <a href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+
+
+
+
+
+
+
+
+
+  <ul>
+<li><a href="/">序章</a></li>
+<li>Swift
+<ul>
+<li><a href="/docs/swift/ch01/01/">Swift Substring</a></li>
+</ul>
+</li>
+<li>iOS
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/ios/runtime/ch01/01/"class=active>Objective-C 关联对象原理</a></li>
+</ul>
+</li>
+<li>UI
+<ul>
+<li><a href="/docs/ios/ui/ch01/01/">实现抖音评论列表效果</a></li>
+<li><a href="/docs/ios/ui/ch02/02/">全屏Feed ScrollView嵌套时滑动问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>WWDC 22
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/wwdc22/ch01/01/">Runtime Performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LLVM
+<ul>
+<li><a href="/docs/llvm/ch01/01/">自定义 LLVM PASS 实现 函数耗时插桩统计</a></li>
+<li><a href="/docs/llvm/ch02/02/">基于 LibTooling 生成 C++ 的 Objective-C++ 包装接口想法初步验证</a></li>
+</ul>
+</li>
+<li>其他
+<ul>
+<li>FFmpeg
+<ul>
+<li><a href="/docs/other/ffmpeg/ch01/01/">iOS 使用 FFmepeg 命令行工具源码实现转码功能</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside.book-menu nav");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+ 
+    </aside>
+
+    <div class="book-page">
+      <header class="book-header">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <strong>Objective C 关联对象原理</strong>
+
+  <label for="toc-control">
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+  </label>
+</div>
+
+
+  
+    <input type="checkbox" class="hidden" id="toc-control" />
+    <aside class="hidden clearfix">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#如何使用">如何使用?</a></li>
+        <li><a href="#源码窥探实现原理">源码窥探实现原理</a></li>
+        <li><a href="#总结">总结:</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+    </aside>
+  
+ 
+      </header>
+
+      
+<article class="markdown">
+  <h1>Objective C 关联对象原理</h1><h2 id="如何使用">如何使用?</h2>
+<ul>
+<li>
+<p>首先需要导入 <code>&lt;objc/runtime.h&gt;</code> 头文件</p>
+</li>
+<li>
+<p>然后通过 <code>runtime</code> 如下 <code>API</code></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#75715e">// 为 object 设置关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>OBJC_EXPORT <span style="color:#66d9ef">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">objc_setAssociatedObject</span>(<span style="color:#66d9ef">id</span> _Nonnull object, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">void</span> <span style="color:#f92672">*</span> _Nonnull key,
+</span></span><span style="display:flex;"><span>                         <span style="color:#66d9ef">id</span> _Nullable value, objc_AssociationPolicy policy)
+</span></span><span style="display:flex;"><span>    OBJC_AVAILABLE(<span style="color:#ae81ff">10.6</span>, <span style="color:#ae81ff">3.1</span>, <span style="color:#ae81ff">9.0</span>, <span style="color:#ae81ff">1.0</span>, <span style="color:#ae81ff">2.0</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 获取 object 关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>OBJC_EXPORT <span style="color:#66d9ef">id</span> _Nullable
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">objc_getAssociatedObject</span>(<span style="color:#66d9ef">id</span> _Nonnull object, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">void</span> <span style="color:#f92672">*</span> _Nonnull key)
+</span></span><span style="display:flex;"><span>    OBJC_AVAILABLE(<span style="color:#ae81ff">10.6</span>, <span style="color:#ae81ff">3.1</span>, <span style="color:#ae81ff">9.0</span>, <span style="color:#ae81ff">1.0</span>, <span style="color:#ae81ff">2.0</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 移除 object 所有关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>OBJC_EXPORT <span style="color:#66d9ef">void</span>
+</span></span><span style="display:flex;"><span><span style="color:#a6e22e">objc_removeAssociatedObjects</span>(<span style="color:#66d9ef">id</span> _Nonnull object)
+</span></span><span style="display:flex;"><span>    OBJC_AVAILABLE(<span style="color:#ae81ff">10.6</span>, <span style="color:#ae81ff">3.1</span>, <span style="color:#ae81ff">9.0</span>, <span style="color:#ae81ff">1.0</span>, <span style="color:#ae81ff">2.0</span>);
+</span></span></code></pre></div></li>
+<li>
+<p>示例代码一</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#75715e">#import &lt;Foundation/Foundation.h&gt;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#import &lt;objc/runtime.h&gt;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@interface</span> <span style="color:#a6e22e">CustomObject</span> : <span style="color:#a6e22e">NSObject</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@implementation</span> <span style="color:#a6e22e">CustomObject</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">int</span> main(<span style="color:#66d9ef">int</span> argc, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>argv[]) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    CustomObject <span style="color:#f92672">*</span>obj <span style="color:#f92672">=</span> [[CustomObject alloc] init];
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>key   <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;name&#34;</span>;
+</span></span><span style="display:flex;"><span>    NSString <span style="color:#f92672">*</span>value   <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;0x1306a94&#34;</span>;
+</span></span><span style="display:flex;"><span>    objc_setAssociatedObject(obj, key, value, OBJC_ASSOCIATION_COPY_NONATOMIC);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    NSLog(<span style="color:#e6db74">@&#34;name is: %@&#34;</span>, objc_getAssociatedObject(obj, key)); <span style="color:#75715e">// name is: 0x1306a94
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div></li>
+<li>
+<p>示例代码二, 为 <code>category</code> 实现 <code>property</code></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#75715e">#import &lt;Foundation/Foundation.h&gt;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#import &lt;objc/runtime.h&gt;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@interface</span> <span style="color:#a6e22e">CustomObject</span> : <span style="color:#a6e22e">NSObject</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@implementation</span> <span style="color:#a6e22e">CustomObject</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@interface</span> <span style="color:#a6e22e">CustomObject</span> (Ext)
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@property</span> (<span style="color:#66d9ef">nonatomic</span>, <span style="color:#66d9ef">copy</span>) NSString <span style="color:#f92672">*</span>name;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@implementation</span> <span style="color:#a6e22e">CustomObject</span> (Ext)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> <span style="color:#f92672">*</span>key <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>key; <span style="color:#75715e">// key 写法
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">setName:</span>(NSString <span style="color:#f92672">*</span>)name {
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// objc_setAssociatedObject(self, key, name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// 写法二,使用 getter selector, 推荐写法
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    objc_setAssociatedObject(self, <span style="color:#66d9ef">@selector</span>(name), name, OBJC_ASSOCIATION_COPY_NONATOMIC);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (NSString <span style="color:#f92672">*</span>)<span style="color:#a6e22e">name</span> {
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// return objc_getAssociatedObject(self, key);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>		<span style="color:#75715e">// _cmd 为每个方法的第二个隐式参数, 推荐写法
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> objc_getAssociatedObject(self, _cmd);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">int</span> main(<span style="color:#66d9ef">int</span> argc, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>argv[]) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    CustomObject <span style="color:#f92672">*</span>obj <span style="color:#f92672">=</span> [[CustomObject alloc] init];
+</span></span><span style="display:flex;"><span>    obj.name          <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;0x1306a94&#34;</span>;
+</span></span><span style="display:flex;"><span>    NSLog(<span style="color:#e6db74">@&#34;name is: %@&#34;</span>, obj.name);  <span style="color:#75715e">// name is: 0x1306a94
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div></li>
+</ul>
+<h2 id="源码窥探实现原理">源码窥探实现原理</h2>
+<p>本文基于 <code>objc4-756.2.tar.gz</code> 源码分析, 具体源码文件为 <code>objc-references.mm</code></p>
+<ul>
+<li>
+<p>首先是 <code>objc_setAssociatedObject</code>的原理  <code>objc_setAssociatedObject</code> 实际内部是调用的 <code>_object_set_associative_reference</code></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">_object_set_associative_reference</span>(<span style="color:#66d9ef">id</span> object, <span style="color:#66d9ef">void</span> <span style="color:#f92672">*</span>key, <span style="color:#66d9ef">id</span> value, uintptr_t policy) {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// This code used to work when nil was passed for object and key. Some code
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// probably relies on that to not crash. Check and handle it explicitly.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// rdar://problem/44094390
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 如果被关联的对象和关联的值都没有,则什么也不做
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>object <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">!</span>value) <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    assert(object);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 检查被关联对象是否支持关联对象
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (object<span style="color:#f92672">-&gt;</span>getIsa()<span style="color:#f92672">-&gt;</span>forbidsAssociatedObjects())
+</span></span><span style="display:flex;"><span>        _objc_fatal(<span style="color:#e6db74">&#34;objc_setAssociatedObject called on instance (%p) of class %s which does not allow associated objects&#34;</span>, object, object_getClassName(object));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// retain the new value (if any) outside the lock.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// 用于记录旧的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    ObjcAssociation old_association(<span style="color:#ae81ff">0</span>, nil);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 如果 关联值有值则根据 policy 参数生成最终的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">id</span> new_value <span style="color:#f92672">=</span> value <span style="color:#f92672">?</span> acquireValue(value, policy) <span style="color:#f92672">:</span> nil;
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        AssociationsManager manager;
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 获取全局的AssociationsHashMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        AssociationsHashMap <span style="color:#f92672">&amp;</span>associations(manager.associations());
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 将被关联对象的地址作为全局的 AssociationsHashMap 的key
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        disguised_ptr_t disguised_object <span style="color:#f92672">=</span> DISGUISE(object);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (new_value) { <span style="color:#75715e">// 如果关联值 有值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// break any existing association.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// 首先根据被关联对象地址从全局的 AssociationsHashMap 中查找 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            AssociationsHashMap<span style="color:#f92672">::</span>iterator i <span style="color:#f92672">=</span> associations.find(disguised_object);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (i <span style="color:#f92672">!=</span> associations.end()) {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// secondary table exists
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 如果找到了 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                ObjectAssociationMap <span style="color:#f92672">*</span>refs <span style="color:#f92672">=</span> i<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 则再根据传入的key从二级的 ObjectAssociationMap 查找具体的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                ObjectAssociationMap<span style="color:#f92672">::</span>iterator j <span style="color:#f92672">=</span> refs<span style="color:#f92672">-&gt;</span>find(key);
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> (j <span style="color:#f92672">!=</span> refs<span style="color:#f92672">-&gt;</span>end()) {
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 如果找到
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    <span style="color:#75715e">// 先记录旧的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    old_association <span style="color:#f92672">=</span> j<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 然后再直接更新 关联值为新值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    j<span style="color:#f92672">-&gt;</span>second <span style="color:#f92672">=</span> ObjcAssociation(policy, new_value);
+</span></span><span style="display:flex;"><span>                } <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 没有被设置过关联值,则直接设置关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    (<span style="color:#f92672">*</span>refs)[key] <span style="color:#f92672">=</span> ObjcAssociation(policy, new_value);
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            } <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// create the new association (first time).
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 如果没有找到 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 则先创建一个 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                ObjectAssociationMap <span style="color:#f92672">*</span>refs <span style="color:#f92672">=</span> new ObjectAssociationMap;
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 将创建的 二级的 ObjectAssociationMap 添加到全局的 AssociationsHashMap 中
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                associations[disguised_object] <span style="color:#f92672">=</span> refs;
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 再把关联值 添加到 二级的 ObjectAssociationMap 中
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                (<span style="color:#f92672">*</span>refs)[key] <span style="color:#f92672">=</span> ObjcAssociation(policy, new_value);
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 标记被关联对象有关联对象
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                object<span style="color:#f92672">-&gt;</span>setHasAssociatedObjects();
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        } <span style="color:#66d9ef">else</span> { <span style="color:#75715e">// 如果关联值为空
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// setting the association to nil breaks the association.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// 首先根据被关联对象地址从全局的 AssociationsHashMap 中查找 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            AssociationsHashMap<span style="color:#f92672">::</span>iterator i <span style="color:#f92672">=</span> associations.find(disguised_object);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (i <span style="color:#f92672">!=</span>  associations.end()) {
+</span></span><span style="display:flex;"><span>                ObjectAssociationMap <span style="color:#f92672">*</span>refs <span style="color:#f92672">=</span> i<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 如果找到了 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 则再根据传入的key从二级的 ObjectAssociationMap 查找具体的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                ObjectAssociationMap<span style="color:#f92672">::</span>iterator j <span style="color:#f92672">=</span> refs<span style="color:#f92672">-&gt;</span>find(key);
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">if</span> (j <span style="color:#f92672">!=</span> refs<span style="color:#f92672">-&gt;</span>end()) {
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 记录旧的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    old_association <span style="color:#f92672">=</span> j<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">// 从二级的 ObjectAssociationMap 中擦除 key 对应的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                    refs<span style="color:#f92672">-&gt;</span>erase(j);
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// release the old value (outside of the lock).
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// 如果旧的关联值有值, 则根据 policy 参数释放旧的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (old_association.hasValue()) ReleaseValue()(old_association);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div></li>
+<li>
+<p>设置关联值流程图</p>
+</li>
+</ul>
+<p><img src="./01.png" alt=""></p>
+<ul>
+<li>
+<p><code>objc_getAssociatedObject</code> 原理 <code>objc_getAssociatedObject</code> 实际内部是调用的 <code>_object_get_associative_reference</code></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#66d9ef">id</span> <span style="color:#a6e22e">_object_get_associative_reference</span>(<span style="color:#66d9ef">id</span> object, <span style="color:#66d9ef">void</span> <span style="color:#f92672">*</span>key) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">id</span> value <span style="color:#f92672">=</span> nil;
+</span></span><span style="display:flex;"><span>    uintptr_t policy <span style="color:#f92672">=</span> OBJC_ASSOCIATION_ASSIGN;
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        AssociationsManager manager;
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 获取全局的AssociationsHashMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        AssociationsHashMap <span style="color:#f92672">&amp;</span>associations(manager.associations());
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 将被关联对象的地址作为全局的 AssociationsHashMap 的key
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        disguised_ptr_t disguised_object <span style="color:#f92672">=</span> DISGUISE(object);
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 根据被关联对象地址从全局的 AssociationsHashMap 中查找 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        AssociationsHashMap<span style="color:#f92672">::</span>iterator i <span style="color:#f92672">=</span> associations.find(disguised_object);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (i <span style="color:#f92672">!=</span> associations.end()) {
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 如果找到了 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            ObjectAssociationMap <span style="color:#f92672">*</span>refs <span style="color:#f92672">=</span> i<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 则再根据传入的key从二级的 ObjectAssociationMap 查找具体的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            ObjectAssociationMap<span style="color:#f92672">::</span>iterator j <span style="color:#f92672">=</span> refs<span style="color:#f92672">-&gt;</span>find(key);
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (j <span style="color:#f92672">!=</span> refs<span style="color:#f92672">-&gt;</span>end()) {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 拿到最终的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                ObjcAssociation <span style="color:#f92672">&amp;</span>entry <span style="color:#f92672">=</span> j<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>                value <span style="color:#f92672">=</span> entry.value();
+</span></span><span style="display:flex;"><span>                policy <span style="color:#f92672">=</span> entry.policy();
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 根据 policy 值,判断是否需要进行 retain
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">if</span> (policy <span style="color:#f92672">&amp;</span> OBJC_ASSOCIATION_GETTER_RETAIN) {
+</span></span><span style="display:flex;"><span>                    objc_retain(value);
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 检查是否需要进行 autorelease
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (value <span style="color:#f92672">&amp;&amp;</span> (policy <span style="color:#f92672">&amp;</span> OBJC_ASSOCIATION_GETTER_AUTORELEASE)) {
+</span></span><span style="display:flex;"><span>        objc_autorelease(value);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 返回查找到的 关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> value;
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div></li>
+<li>
+<p><code>objc_removeAssociatedObjects</code> 原理 <code>objc_removeAssociatedObjects</code>首先会检查 <code>被关联对象是否有值, 是否被标记过有关联对象</code></p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-objc" data-lang="objc"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">objc_removeAssociatedObjects</span>(<span style="color:#66d9ef">id</span> object) 
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (object <span style="color:#f92672">&amp;&amp;</span> object<span style="color:#f92672">-&gt;</span>hasAssociatedObjects()) {
+</span></span><span style="display:flex;"><span>        _object_remove_assocations(object);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Objective-C" data-lang="Objective-C"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">_object_remove_assocations</span>(<span style="color:#66d9ef">id</span> object) {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 记录所有的关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    vector<span style="color:#f92672">&lt;</span> ObjcAssociation,ObjcAllocator<span style="color:#f92672">&lt;</span>ObjcAssociation<span style="color:#f92672">&gt;</span> <span style="color:#f92672">&gt;</span> elements;
+</span></span><span style="display:flex;"><span>    {
+</span></span><span style="display:flex;"><span>        AssociationsManager manager;
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 首先拿到全局的 AssociationsHashMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        AssociationsHashMap <span style="color:#f92672">&amp;</span>associations(manager.associations());
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 如果全局的 AssociationsHashMap 中没有元素 则什么也不做
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> (associations.size() <span style="color:#f92672">==</span> <span style="color:#ae81ff">0</span>) <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 将被关联对象的地址作为全局的 AssociationsHashMap 的key
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        disguised_ptr_t disguised_object <span style="color:#f92672">=</span> DISGUISE(object);
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 根据被关联对象地址从全局的 AssociationsHashMap 中查找 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        AssociationsHashMap<span style="color:#f92672">::</span>iterator i <span style="color:#f92672">=</span> associations.find(disguised_object);
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (i <span style="color:#f92672">!=</span> associations.end()) {
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// copy all of the associations that need to be removed.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            ObjectAssociationMap <span style="color:#f92672">*</span>refs <span style="color:#f92672">=</span> i<span style="color:#f92672">-&gt;</span>second;
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">for</span> (ObjectAssociationMap<span style="color:#f92672">::</span>iterator j <span style="color:#f92672">=</span> refs<span style="color:#f92672">-&gt;</span>begin(), end <span style="color:#f92672">=</span> refs<span style="color:#f92672">-&gt;</span>end(); j <span style="color:#f92672">!=</span> end; <span style="color:#f92672">++</span>j) {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 将二级的 ObjectAssociationMap 中的每一个元素,保存到 elements 中
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                elements.push_back(j<span style="color:#f92672">-&gt;</span>second);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// remove the secondary table.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#75715e">// 释放二级的 ObjectAssociationMap 内存
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            delete refs;
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 从全局的 AssociationsHashMap 中移除这个 二级的 ObjectAssociationMap
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            associations.erase(i);
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// the calls to releaseValue() happen outside of the lock.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// 释放从二级的 ObjectAssociationMap 中查找到的 所有关联值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    for_each(elements.begin(), elements.end(), ReleaseValue());
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div></li>
+</ul>
+<h2 id="总结">总结:</h2>
+<ul>
+<li>实现关联对象的核心由 <code>AssociationsManager</code> <code>AssociationsHashMap</code> <code>ObjectAssociationMap</code> <code>ObjcAssociation</code> 组成</li>
+<li><code>关联值并不是存储在被关联对象本身内存中</code></li>
+<li>关联对象存储在全局的统一的一个 <code>AssociationsManager</code> 中</li>
+<li>设置关联对象为 <code>nil</code> 就相当于是 <code>移除关联值</code></li>
+</ul>
+
+    <div>
+      <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/edit/master/docs/ios/runtime/ch01/01.md" target="_blank" rel="noopener">
+        <img src="/svg/edit.svg" class="book-icon" alt="Edit" />
+        <span>Edit this page</span>
+      </a>
+    </div>
+  
+  <hr/>
+  <img src="" style="max-width: 100%;"/>
+  
+</article>
+
+<div id="gitalk-container"></div>
+<link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script>
+    const gitalk = new Gitalk({
+        clientID: '2c62ad75ef03025b19a5',
+        clientSecret: '0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635',
+        repo: 'blog-comments',
+        owner: '0x1306a94',
+        admin: ['0x1306a94'],
+        id: location.pathname, 
+        distractionFreeMode: false 
+    });
+    (function() {
+        if (["localhost", "127.0.0.1"].indexOf(window.location.hostname) != -1) {
+            document.getElementById('gitalk-container').innerHTML = 'Gitalk comments not available by default when the website is previewed locally.';
+            return;
+        }
+        gitalk.render('gitalk-container');
+    })();
+</script>
+
+ 
+
+      <footer class="book-footer">
+        
+  <div class="flex justify-between">
+
+
+
+  <div>
+    
+    <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/commit/74ef10c01c70ea534ec72748c7833978a92a2105" title='Last modified by 0x1306a94 | June 16, 2022' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="Calendar" />
+      <span>June 16, 2022</span>
+    </a>
+  </div>
+
+</div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+      </footer>
+      
+    </div>
+
+    
+    <aside class="book-toc">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#如何使用">如何使用?</a></li>
+        <li><a href="#源码窥探实现原理">源码窥探实现原理</a></li>
+        <li><a href="#总结">总结:</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+ 
+    </aside>
+    
+  </main>
+
+  
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

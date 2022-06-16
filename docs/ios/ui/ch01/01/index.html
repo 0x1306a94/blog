@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="实现抖音评论列表效果"><meta property="og:title" content="实现抖音评论列表效果" />
+<meta property="og:description" content="通过Lookin查看视图层级可得知: 首页是一个导航栏控制器, 其 rootViewController 为 AWEFeedRootViewController AWEFeedContainerViewController 为视频列表的控制器, 同时 AWEFeedContainerViewController 做为 AWEFeedRootViewController 的 childViewController AWECommentListViewController 为评论弹层, AWECommentListViewController 并未采用 addChildViewController 方式加入 AWEFeedContainerViewController 作为其 childViewController, 而是直接将 AWECommentListViewController.view 添加到 AWEFeedRootViewController.view AWECommentListViewController 的视图层级如下: baseView effectView 为 UIVisualEffectView 实现模糊效果 headerView tableView keyboardMaskView 当键盘弹出时,才显示,用于实现点击上半部分关闭键盘 commentInputView 底部输入框 抖音评论列表有以下效果: 无评论数据时,整个 baseView 区域可以通过手势往下滑动以关闭列表 有评论数据时,下滑tableView到顶时继续往下滑动,则会让baseView和commentInputView同步联动往下滑 同时还有两个细节个人认为没有处理好: 当往下联动后再往上滑动无法触发tableView继续往上滑动 当tableView已经往上滑动了一部分后,从headerView区域无法触发滑动,只能先通过tableView触发,然后激活联动处理 接下来通过逆向分析得知: 通过上面分析的视图层级,找到baseView, 发现baseView自身被添加了一个UIPanGestureRecognizer UIPanGestureRecognizer 的 target 为 AWECommentListViewController UIPanGestureRecognizer 的 action 为 AWECommentListViewController 的 selfPanned: UIPanGestureRecognizer 的 delegate 为 AWECommentListViewController 大致确定了整个联动处理是依靠baseView的手势和tableView自身的手势共同完成 iPhone:~ root# cycript -p Aweme cy# UIApp." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://blog.0x1306a94.com/docs/ios/ui/ch01/01/" /><meta property="article:section" content="docs" />
+<meta property="article:published_time" content="2020-10-31T13:00:29+08:00" />
+<meta property="article:modified_time" content="2022-06-16T13:06:12+08:00" />
+
+<title>实现抖音评论列表效果 | 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+
+
+<link rel="stylesheet" href="/book.min.e56ae18661d37ebd7511f1db8c09f79d77ae712cf40a3d7441d2603da99ed001.css" integrity="sha256-5WrhhmHTfr11EfHbjAn3nXeucSz0Cj10QdJgPame0AE=">
+
+
+<script defer src="/en.search.min.7842bdd1df86a43bced2fa8e8d67fa7ccd10896c9fc845351ebf8a8e1899909b.js" integrity="sha256-eEK90d&#43;GpDvO0vqOjWf6fM0QiWyfyEU1Hr&#43;KjhiZkJs="></script>
+
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+</head>
+
+<body>
+  <input type="checkbox" class="hidden" id="menu-control" />
+  <main class="container flex">
+    <aside class="book-menu">
+      
+  <nav>
+<h2 class="book-brand">
+  <a href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+
+
+
+
+
+
+
+
+
+  <ul>
+<li><a href="/">序章</a></li>
+<li>Swift
+<ul>
+<li><a href="/docs/swift/ch01/01/">Swift Substring</a></li>
+</ul>
+</li>
+<li>iOS
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/ios/runtime/ch01/01/">Objective-C 关联对象原理</a></li>
+</ul>
+</li>
+<li>UI
+<ul>
+<li><a href="/docs/ios/ui/ch01/01/"class=active>实现抖音评论列表效果</a></li>
+<li><a href="/docs/ios/ui/ch02/02/">全屏Feed ScrollView嵌套时滑动问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>WWDC 22
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/wwdc22/ch01/01/">Runtime Performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LLVM
+<ul>
+<li><a href="/docs/llvm/ch01/01/">自定义 LLVM PASS 实现 函数耗时插桩统计</a></li>
+<li><a href="/docs/llvm/ch02/02/">基于 LibTooling 生成 C++ 的 Objective-C++ 包装接口想法初步验证</a></li>
+</ul>
+</li>
+<li>其他
+<ul>
+<li>FFmpeg
+<ul>
+<li><a href="/docs/other/ffmpeg/ch01/01/">iOS 使用 FFmepeg 命令行工具源码实现转码功能</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside.book-menu nav");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+ 
+    </aside>
+
+    <div class="book-page">
+      <header class="book-header">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <strong>实现抖音评论列表效果</strong>
+
+  <label for="toc-control">
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+  </label>
+</div>
+
+
+  
+    <input type="checkbox" class="hidden" id="toc-control" />
+    <aside class="hidden clearfix">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+    </aside>
+  
+ 
+      </header>
+
+      
+<article class="markdown">
+  <h1>实现抖音评论列表效果</h1><p><img src="./image02.png" alt=""></p>
+<h4 id="通过lookin查看视图层级可得知">通过Lookin查看视图层级可得知:</h4>
+<ul>
+<li>首页是一个导航栏控制器, 其 <code>rootViewController</code> 为 <code>AWEFeedRootViewController</code></li>
+<li><code>AWEFeedContainerViewController</code> 为视频列表的控制器, 同时 <code>AWEFeedContainerViewController</code> 做为 <code>AWEFeedRootViewController</code> 的 <code>childViewController</code></li>
+<li><code>AWECommentListViewController</code> 为评论弹层, <code>AWECommentListViewController</code> 并未采用 <code>addChildViewController</code> 方式加入 <code>AWEFeedContainerViewController</code> 作为其 <code>childViewController</code>, 而是直接将 <code>AWECommentListViewController.view</code> 添加到 <code>AWEFeedRootViewController.view</code></li>
+</ul>
+<h4 id="awecommentlistviewcontroller-的视图层级如下"><code>AWECommentListViewController</code> 的视图层级如下:</h4>
+<ul>
+<li><code>baseView</code>
+<ul>
+<li><code>effectView</code> 为 <code>UIVisualEffectView</code> 实现模糊效果</li>
+<li><code>headerView</code></li>
+<li><code>tableView</code></li>
+</ul>
+</li>
+<li><code>keyboardMaskView</code> 当键盘弹出时,才显示,用于实现点击上半部分关闭键盘</li>
+<li><code>commentInputView</code> 底部输入框</li>
+</ul>
+<h4 id="抖音评论列表有以下效果">抖音评论列表有以下效果:</h4>
+<ul>
+<li>无评论数据时,整个 <code>baseView</code> 区域可以通过手势往下滑动以关闭列表</li>
+<li>有评论数据时,下滑<code>tableView</code>到顶时继续往下滑动,则会让<code>baseView</code>和<code>commentInputView</code>同步联动往下滑</li>
+<li>同时还有两个细节个人认为没有处理好:
+<ul>
+<li>当往下联动后再往上滑动无法触发<code>tableView</code>继续往上滑动</li>
+<li>当<code>tableView</code>已经往上滑动了一部分后,从<code>headerView</code>区域无法触发滑动,只能先通过<code>tableView</code>触发,然后激活联动处理</li>
+</ul>
+</li>
+</ul>
+<h4 id="接下来通过逆向分析得知">接下来通过逆向分析得知:</h4>
+<ul>
+<li>通过上面分析的视图层级,找到<code>baseView</code>, 发现<code>baseView</code>自身被添加了一个<code>UIPanGestureRecognizer</code></li>
+<li><code>UIPanGestureRecognizer</code> 的 <code>target</code> 为 <code>AWECommentListViewController</code></li>
+<li><code>UIPanGestureRecognizer</code> 的 <code>action</code> 为 <code>AWECommentListViewController</code> 的 <code>selfPanned:</code></li>
+<li><code>UIPanGestureRecognizer</code> 的 <code>delegate</code> 为 <code>AWECommentListViewController</code></li>
+<li>大致确定了整个联动处理是依靠<code>baseView</code>的手势和<code>tableView</code>自身的手势共同完成</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>iPhone:~ root# cycript -p Aweme
+</span></span><span style="display:flex;"><span>cy# UIApp.keyWindow.rootViewController
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#&#34;&lt;AWETabBarController: 0x116283600&gt;&#34;</span>
+</span></span><span style="display:flex;"><span>cy# <span style="color:#f92672">[</span><span style="color:#75715e">#0x116a59520 subviews]</span>
+</span></span><span style="display:flex;"><span>@<span style="color:#f92672">[</span><span style="color:#75715e">#&#34;&lt;UIView: 0x115e3f7d0; frame = (0 0; 375 667); autoresize = W+H; layer = &lt;CALayer: 0x282b1a7a0&gt;&gt;&#34;,#&#34;&lt;UIView: 0x119063140; frame = (0 0; 375 667); autoresize = W+H; gestureRecognizers = &lt;NSArray: 0x2827722e0&gt;; layer = &lt;CALayer: 0x282af3ac0&gt;&gt;&#34;]</span>
+</span></span><span style="display:flex;"><span>cy# <span style="color:#f92672">[</span><span style="color:#75715e">#0x119063140 subviews]</span>
+</span></span><span style="display:flex;"><span>@<span style="color:#f92672">[</span><span style="color:#75715e">#&#34;&lt;UIView: 0x11f16f720; frame = (0 180; 375 487); gestureRecognizers = &lt;NSArray: 0x282773c60&gt;; layer = &lt;CALayer: 0x282a8fd00&gt;&gt;&#34;,#&#34;&lt;UIView: 0x11f1d60d0; frame = (0 667; 375 200); layer = &lt;CALayer: 0x282aa3b20&gt;&gt;&#34;,#&#34;&lt;UIView: 0x11f1f3370; frame = (0 0; 375 667); alpha = 0; gestureRecognizers = &lt;NSArray: 0x282755860&gt;; layer = &lt;CALayer: 0x282c6d720&gt;&gt;&#34;,#&#34;&lt;AWECommentListInputView: 0x11f1f0110; frame = (0 618; 375 49); gestureRecognizers = &lt;NSArray: 0x282765380&gt;; layer = &lt;CALayer: 0x282bc2080&gt;&gt;&#34;]</span>
+</span></span><span style="display:flex;"><span>....
+</span></span><span style="display:flex;"><span>....
+</span></span><span style="display:flex;"><span>cy# <span style="color:#f92672">[</span><span style="color:#75715e">#0x11f16f720 gestureRecognizers]</span>
+</span></span><span style="display:flex;"><span>@<span style="color:#f92672">[</span><span style="color:#75715e">#&#34;&lt;UIPanGestureRecognizer: 0x12175a1c0; state = Possible; view = &lt;UIView 0x11f16f720&gt;; targets= &lt;(\n    \&#34;(action=selfPanned:, target=&lt;AWECommentListViewController 0x1163bd400&gt;)\&#34;,\n    \&#34;(action=awe_UITracker_gestureRecognizer:, target=&lt;UIView 0x11f16f720&gt;)\&#34;\n)&gt;&gt;&#34;]</span>
+</span></span><span style="display:flex;"><span>cy# <span style="color:#f92672">[</span><span style="color:#75715e">#0x12175a1c0 delegate]</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#&#34;&lt;AWECommentListViewController: 0x1163bd400&gt;&#34;</span>
+</span></span><span style="display:flex;"><span>....
+</span></span><span style="display:flex;"><span>....
+</span></span></code></pre></div><h4 id="写代码实现">写代码实现</h4>
+<ul>
+<li>没有具体去分析抖音的实现,所以接下来会通过自己的方法来实现抖音的效果,同时处理上面所提出的两个细节</li>
+<li>创建一个继承自<code>UITableView</code>的<code>CommentListTableView</code>,并重写<code>gestureRecognizerShouldBegin:</code></li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Objective-C" data-lang="Objective-C"><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  CommentListTableView.m
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  TestTableView
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  Created by 0x1306a94 on 2020/10/31.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  Copyright © 2020 0x1306a94. All rights reserved.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#import &#34;CommentListTableView.h&#34;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@implementation</span> <span style="color:#a6e22e">CommentListTableView</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (<span style="color:#66d9ef">BOOL</span>)<span style="color:#a6e22e">gestureRecognizerShouldBegin:</span>(UIGestureRecognizer <span style="color:#f92672">*</span>)gestureRecognizer {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> ([gestureRecognizer isKindOfClass:UIPanGestureRecognizer.<span style="color:#66d9ef">class</span>]) {
+</span></span><span style="display:flex;"><span>        UIPanGestureRecognizer <span style="color:#f92672">*</span>pan <span style="color:#f92672">=</span> (UIPanGestureRecognizer <span style="color:#f92672">*</span>)gestureRecognizer;
+</span></span><span style="display:flex;"><span>        CGPoint contentOffset       <span style="color:#f92672">=</span> self.contentOffset;
+</span></span><span style="display:flex;"><span>        CGPoint velocity            <span style="color:#f92672">=</span> [pan velocityInView:pan.view];
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">//        CGAffineTransform transform = self.superview.transform;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#75715e">//        if (transform.ty != 0) {
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#75715e">//            return NO;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#75715e">//        }
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> (contentOffset.y <span style="color:#f92672">==</span> <span style="color:#f92672">-</span>self.contentInset.top) {
+</span></span><span style="display:flex;"><span>            NSLog(<span style="color:#e6db74">@&#34;%@&#34;</span>, NSStringFromCGPoint(velocity));
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 关键点: 当前是最顶点, 不允许往下滑动
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">if</span> (velocity.y <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>) {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 向下
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#66d9ef">return</span> NO;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> YES;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span></code></pre></div><ul>
+<li>创建 <code>CommentListViewController</code>, 并构建对应的视图层级</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Objective-C" data-lang="Objective-C"><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  CommentListViewController.m
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  TestTableView
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  Created by 0x1306a94 on 2020/10/31.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//  Copyright © 2020 0x1306a94. All rights reserved.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#import &#34;CommentListViewController.h&#34;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#import &#34;CommentListTableView.h&#34;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@interface</span> <span style="color:#a6e22e">CommentListViewController</span> () <span style="color:#f92672">&lt;</span>UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate<span style="color:#f92672">&gt;</span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@property</span> (<span style="color:#66d9ef">nonatomic</span>, <span style="color:#66d9ef">strong</span>) UIView <span style="color:#f92672">*</span>containerView;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@property</span> (<span style="color:#66d9ef">nonatomic</span>, <span style="color:#66d9ef">strong</span>) UIView <span style="color:#f92672">*</span>headerView;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@property</span> (<span style="color:#66d9ef">nonatomic</span>, <span style="color:#66d9ef">strong</span>) CommentListTableView <span style="color:#f92672">*</span>tableView;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@property</span> (<span style="color:#66d9ef">nonatomic</span>, <span style="color:#66d9ef">assign</span>) <span style="color:#66d9ef">BOOL</span> panGestureEnable;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@implementation</span> <span style="color:#a6e22e">CommentListViewController</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">viewDidLoad</span> {
+</span></span><span style="display:flex;"><span>    [super viewDidLoad];
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// Do any additional setup after loading the view.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    self.view.backgroundColor <span style="color:#f92672">=</span> UIColor.clearColor;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    self.containerView                     <span style="color:#f92672">=</span> [[UIView alloc] initWithFrame:CGRectMake(<span style="color:#ae81ff">0</span>, CGRectGetHeight(UIScreen.mainScreen.bounds) <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.3</span>, CGRectGetWidth(UIScreen.mainScreen.bounds), CGRectGetHeight(UIScreen.mainScreen.bounds) <span style="color:#f92672">*</span> <span style="color:#ae81ff">0.7</span>)];
+</span></span><span style="display:flex;"><span>    self.containerView.backgroundColor     <span style="color:#f92672">=</span> UIColor.orangeColor;
+</span></span><span style="display:flex;"><span>    self.containerView.layer.cornerRadius  <span style="color:#f92672">=</span> <span style="color:#ae81ff">10</span>;
+</span></span><span style="display:flex;"><span>    self.containerView.layer.maskedCorners <span style="color:#f92672">=</span> kCALayerMinXMinYCorner <span style="color:#f92672">|</span> kCALayerMaxXMinYCorner;
+</span></span><span style="display:flex;"><span>    self.containerView.layer.masksToBounds <span style="color:#f92672">=</span> YES;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    self.headerView                 <span style="color:#f92672">=</span> [[UIView alloc] initWithFrame:CGRectMake(<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, CGRectGetWidth(self.containerView.bounds), <span style="color:#ae81ff">100</span>)];
+</span></span><span style="display:flex;"><span>    self.headerView.backgroundColor <span style="color:#f92672">=</span> UIColor.redColor;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    self.tableView                 <span style="color:#f92672">=</span> [[CommentListTableView alloc] initWithFrame:CGRectMake(<span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">100</span>, CGRectGetWidth(self.containerView.bounds), CGRectGetHeight(self.containerView.bounds) <span style="color:#f92672">-</span> <span style="color:#ae81ff">100</span>) style:UITableViewStylePlain];
+</span></span><span style="display:flex;"><span>    self.tableView.backgroundColor <span style="color:#f92672">=</span> UIColor.whiteColor;
+</span></span><span style="display:flex;"><span>    self.tableView.dataSource      <span style="color:#f92672">=</span> self;
+</span></span><span style="display:flex;"><span>    self.tableView.delegate        <span style="color:#f92672">=</span> self;
+</span></span><span style="display:flex;"><span>    [self.tableView registerClass:UITableViewCell.<span style="color:#66d9ef">class</span> forCellReuseIdentifier:<span style="color:#e6db74">@&#34;cell&#34;</span>];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    [self.view addSubview:self.containerView];
+</span></span><span style="display:flex;"><span>    [self.containerView addSubview:self.headerView];
+</span></span><span style="display:flex;"><span>    [self.containerView addSubview:self.tableView];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    UIPanGestureRecognizer <span style="color:#f92672">*</span>pan <span style="color:#f92672">=</span> [[UIPanGestureRecognizer alloc] initWithTarget:self action:<span style="color:#66d9ef">@selector</span>(panGestureHandler:)];
+</span></span><span style="display:flex;"><span>    pan.delegate                <span style="color:#f92672">=</span> self;
+</span></span><span style="display:flex;"><span>    self.panGestureEnable       <span style="color:#f92672">=</span> NO;
+</span></span><span style="display:flex;"><span>    [self.containerView addGestureRecognizer:pan];
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    self.view.hidden             <span style="color:#f92672">=</span> YES;
+</span></span><span style="display:flex;"><span>    CGAffineTransform transform  <span style="color:#f92672">=</span> CGAffineTransformMakeTranslation(<span style="color:#ae81ff">0</span>, CGRectGetHeight(self.containerView.frame));
+</span></span><span style="display:flex;"><span>    self.containerView.transform <span style="color:#f92672">=</span> transform;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">panGestureHandler:</span>(UIPanGestureRecognizer <span style="color:#f92672">*</span>)pan {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (self.tableView.isDragging) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">switch</span> (pan.state) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">case</span> UIGestureRecognizerStateBegan: {
+</span></span><span style="display:flex;"><span>            [pan setTranslation:CGPointZero inView:pan.view];
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">break</span>;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">case</span> UIGestureRecognizerStateChanged: {
+</span></span><span style="display:flex;"><span>            CGPoint translation   <span style="color:#f92672">=</span> [pan translationInView:pan.view];
+</span></span><span style="display:flex;"><span>            CGPoint contentOffset <span style="color:#f92672">=</span> self.tableView.contentOffset;
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (contentOffset.y <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span>) {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">// 这段代码用于处理, tableView 已经往上滑动一部分后
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 从 headerView 区域 触发手势, 无法滑动 tableView
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                <span style="color:#75715e">// 还有另一个功能就是,用于修正 tableView
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>                contentOffset.y <span style="color:#f92672">-=</span> translation.y;
+</span></span><span style="display:flex;"><span>                [pan setTranslation:CGPointZero inView:pan.view];
+</span></span><span style="display:flex;"><span>                [self.tableView setContentOffset:contentOffset animated:NO];
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 如果去掉这段代码,会出现 突然往下跳动, 具体现象可以,注释掉这部分代码
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">if</span> (contentOffset.y <span style="color:#f92672">==</span> <span style="color:#ae81ff">0.0</span> <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">!</span>self.panGestureEnable) {
+</span></span><span style="display:flex;"><span>                self.panGestureEnable <span style="color:#f92672">=</span> YES;
+</span></span><span style="display:flex;"><span>                [pan setTranslation:CGPointZero inView:pan.view];
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>            [self updatePresentedViewForTranslation:translation.y];
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">break</span>;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">case</span> UIGestureRecognizerStateEnded:
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">case</span> UIGestureRecognizerStateFailed: {
+</span></span><span style="display:flex;"><span>            self.panGestureEnable          <span style="color:#f92672">=</span> NO;
+</span></span><span style="display:flex;"><span>            CGAffineTransform curTransform <span style="color:#f92672">=</span> self.containerView.transform;
+</span></span><span style="display:flex;"><span>            CGAffineTransform transform    <span style="color:#f92672">=</span> CGAffineTransformIdentity;
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// 200 这个临界值可以修改为自己项目合适的值
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>            <span style="color:#66d9ef">if</span> (curTransform.ty <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">200</span>) {
+</span></span><span style="display:flex;"><span>                [self hide];
+</span></span><span style="display:flex;"><span>            } <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">/* clang-format off */</span>
+</span></span><span style="display:flex;"><span>                [UIView animateWithDuration:<span style="color:#ae81ff">0.6</span> delay:<span style="color:#ae81ff">0</span> usingSpringWithDamping:<span style="color:#ae81ff">1</span> initialSpringVelocity:<span style="color:#ae81ff">1</span> options:UIViewAnimationOptionCurveEaseOut<span style="color:#f92672">|</span> UIViewAnimationOptionAllowUserInteraction animations:<span style="color:#f92672">^</span>{
+</span></span><span style="display:flex;"><span>                    self.containerView.transform <span style="color:#f92672">=</span> transform;
+</span></span><span style="display:flex;"><span>                } completion:<span style="color:#f92672">^</span>(<span style="color:#66d9ef">BOOL</span> finished) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                }];
+</span></span><span style="display:flex;"><span>                <span style="color:#75715e">/* clang-format on */</span>
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">break</span>;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">default</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">break</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma mark - updatePresentedViewForTranslation
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">updatePresentedViewForTranslation:</span>(CGFloat)translation {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (translation <span style="color:#f92672">&lt;</span> <span style="color:#ae81ff">0</span>) {
+</span></span><span style="display:flex;"><span>        self.containerView.transform <span style="color:#f92672">=</span> CGAffineTransformIdentity;
+</span></span><span style="display:flex;"><span>        [self.tableView setContentOffset:CGPointMake(<span style="color:#ae81ff">0</span>, <span style="color:#f92672">-</span>translation) animated:NO];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    self.containerView.transform <span style="color:#f92672">=</span> CGAffineTransformMakeTranslation(<span style="color:#ae81ff">0</span>, translation);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma mark - UIGestureRecognizerDelegate
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (<span style="color:#66d9ef">BOOL</span>)<span style="color:#a6e22e">gestureRecognizer:</span>(UIGestureRecognizer <span style="color:#f92672">*</span>)gestureRecognizer <span style="color:#a6e22e">shouldRecognizeSimultaneouslyWithGestureRecognizer:</span>(UIGestureRecognizer <span style="color:#f92672">*</span>)otherGestureRecognizer {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 关键点: 允许同时识别多个手势
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">return</span> YES;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma mark - UITableViewDataSource
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (NSInteger)<span style="color:#a6e22e">tableView:</span>(UITableView <span style="color:#f92672">*</span>)tableView <span style="color:#a6e22e">numberOfRowsInSection:</span>(NSInteger)section {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">100</span>;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (UITableViewCell <span style="color:#f92672">*</span>)<span style="color:#a6e22e">tableView:</span>(UITableView <span style="color:#f92672">*</span>)tableView <span style="color:#a6e22e">cellForRowAtIndexPath:</span>(NSIndexPath <span style="color:#f92672">*</span>)indexPath {
+</span></span><span style="display:flex;"><span>    UITableViewCell <span style="color:#f92672">*</span>cell <span style="color:#f92672">=</span> [tableView dequeueReusableCellWithIdentifier:<span style="color:#e6db74">@&#34;cell&#34;</span>];
+</span></span><span style="display:flex;"><span>    cell.textLabel.text   <span style="color:#f92672">=</span> <span style="color:#ae81ff">@(</span>indexPath.row<span style="color:#ae81ff">)</span>.stringValue;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> cell;
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma mark - UIScrollViewDelegate
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">scrollViewDidScroll:</span>(UIScrollView <span style="color:#f92672">*</span>)scrollView {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 关键点: 当 tableView 下滑到顶以后, 交由 containerView 的手势处理
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#75715e">// 这样就不需要下滑到顶以后,需要松开手指 再次触发手势
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    <span style="color:#66d9ef">if</span> (scrollView.contentOffset.y <span style="color:#f92672">&lt;=</span> <span style="color:#f92672">-</span>scrollView.contentInset.top <span style="color:#f92672">&amp;&amp;</span> scrollView.panGestureRecognizer.state <span style="color:#f92672">==</span> UIGestureRecognizerStateChanged) {
+</span></span><span style="display:flex;"><span>        NSLog(<span style="color:#e6db74">@&#34;tableview top&#34;</span>);
+</span></span><span style="display:flex;"><span>        scrollView.panGestureRecognizer.state <span style="color:#f92672">=</span> UIGestureRecognizerStateEnded;
+</span></span><span style="display:flex;"><span>        [scrollView setContentOffset:CGPointZero animated:NO];
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#pragma mark - public method
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">show</span> {
+</span></span><span style="display:flex;"><span>    self.view.hidden            <span style="color:#f92672">=</span> NO;
+</span></span><span style="display:flex;"><span>    CGAffineTransform transform <span style="color:#f92672">=</span> CGAffineTransformIdentity;
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">/* clang-format off */</span>
+</span></span><span style="display:flex;"><span>    [UIView animateWithDuration:<span style="color:#ae81ff">0.6</span> delay:<span style="color:#ae81ff">0</span> usingSpringWithDamping:<span style="color:#ae81ff">1</span> initialSpringVelocity:<span style="color:#ae81ff">1</span> options:UIViewAnimationOptionCurveEaseOut<span style="color:#f92672">|</span> UIViewAnimationOptionAllowUserInteraction animations:<span style="color:#f92672">^</span>{
+</span></span><span style="display:flex;"><span>        self.containerView.transform <span style="color:#f92672">=</span> transform;
+</span></span><span style="display:flex;"><span>    } completion:<span style="color:#f92672">^</span>(<span style="color:#66d9ef">BOOL</span> finished) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    }];
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">/* clang-format on */</span>
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">hide</span> {
+</span></span><span style="display:flex;"><span>    CGAffineTransform transform <span style="color:#f92672">=</span> CGAffineTransformMakeTranslation(<span style="color:#ae81ff">0</span>, CGRectGetHeight(self.containerView.frame));
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">/* clang-format off */</span>
+</span></span><span style="display:flex;"><span>    [UIView animateWithDuration:<span style="color:#ae81ff">0.6</span> delay:<span style="color:#ae81ff">0</span> usingSpringWithDamping:<span style="color:#ae81ff">1</span> initialSpringVelocity:<span style="color:#ae81ff">1</span> options:UIViewAnimationOptionCurveEaseOut<span style="color:#f92672">|</span> UIViewAnimationOptionAllowUserInteraction animations:<span style="color:#f92672">^</span>{
+</span></span><span style="display:flex;"><span>        self.containerView.transform <span style="color:#f92672">=</span> transform;
+</span></span><span style="display:flex;"><span>    } completion:<span style="color:#f92672">^</span>(<span style="color:#66d9ef">BOOL</span> finished) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (finished) {
+</span></span><span style="display:flex;"><span>            self.view.hidden <span style="color:#f92672">=</span> YES;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }];
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">/* clang-format on */</span>
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">@end</span>
+</span></span></code></pre></div><ul>
+<li>无数据时,可以将<code>tableView.scrollEnabled = NO</code></li>
+<li><a href="https://github.com/0x1306a94/SampleCode/tree/main/TestTableView">demo</a> 效果如下</li>
+</ul>
+<video id="video" controls="controls" preload="none" style="width:100%">
+<source id="mp4" src="./video.mp4" type="video/mp4">
+</video>
+
+    <div>
+      <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/edit/master/docs/ios/ui/ch01/01.md" target="_blank" rel="noopener">
+        <img src="/svg/edit.svg" class="book-icon" alt="Edit" />
+        <span>Edit this page</span>
+      </a>
+    </div>
+  
+  <hr/>
+  <img src="" style="max-width: 100%;"/>
+  
+</article>
+
+<div id="gitalk-container"></div>
+<link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script>
+    const gitalk = new Gitalk({
+        clientID: '2c62ad75ef03025b19a5',
+        clientSecret: '0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635',
+        repo: 'blog-comments',
+        owner: '0x1306a94',
+        admin: ['0x1306a94'],
+        id: location.pathname, 
+        distractionFreeMode: false 
+    });
+    (function() {
+        if (["localhost", "127.0.0.1"].indexOf(window.location.hostname) != -1) {
+            document.getElementById('gitalk-container').innerHTML = 'Gitalk comments not available by default when the website is previewed locally.';
+            return;
+        }
+        gitalk.render('gitalk-container');
+    })();
+</script>
+
+ 
+
+      <footer class="book-footer">
+        
+  <div class="flex justify-between">
+
+
+
+  <div>
+    
+    <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/commit/74ef10c01c70ea534ec72748c7833978a92a2105" title='Last modified by 0x1306a94 | June 16, 2022' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="Calendar" />
+      <span>June 16, 2022</span>
+    </a>
+  </div>
+
+</div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+      </footer>
+      
+    </div>
+
+    
+    <aside class="book-toc">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+ 
+    </aside>
+    
+  </main>
+
+  
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

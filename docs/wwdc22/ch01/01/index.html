@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="运行时优化"><meta property="og:title" content="运行时优化" />
+<meta property="og:description" content="Message Send 优化 在Objective-C中的方法调用,最终都将转为objc_msgSend调用 根据其objc_msgSend调用约定其中第一个参数为receiver, 第二个参数为selector 如上图所示, 每次调用少不了selector准备, 优化之后 如上图所示,创建了selector对应的stub,将selector参数准备放到了stub中,这样一来stub就可以复用,同时也就少了很多获取selector的 adrp ldr指令,另一方面也就减小了可执行文件大小 同时这种优化有两种优化模式,如下图所示. Retain and release 在ARC中由编译器插入对应的内存处理代码,从而避免手动管理内存 在调用objc_retain objc_release前都需要准备x0寄存器.而优化的方式则是通过将参数准备调整为一系列objc_retain_xx objc_release_xx调用, 比如datComponents这个变量从分配到释放一直保持在x20寄存器中,那么在释放时则直接通过 bl _objc_release_x20,也就少了mov x0, x20这条指令,这种优化同样也减小了可执行文件大小 原session Improve app size and runtime performance " />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://blog.0x1306a94.com/docs/wwdc22/ch01/01/" /><meta property="article:section" content="docs" />
+<meta property="article:published_time" content="2022-06-16T11:15:45+08:00" />
+<meta property="article:modified_time" content="2022-06-16T13:06:12+08:00" />
+
+<title>运行时优化 | 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+
+
+<link rel="stylesheet" href="/book.min.e56ae18661d37ebd7511f1db8c09f79d77ae712cf40a3d7441d2603da99ed001.css" integrity="sha256-5WrhhmHTfr11EfHbjAn3nXeucSz0Cj10QdJgPame0AE=">
+
+
+<script defer src="/en.search.min.7842bdd1df86a43bced2fa8e8d67fa7ccd10896c9fc845351ebf8a8e1899909b.js" integrity="sha256-eEK90d&#43;GpDvO0vqOjWf6fM0QiWyfyEU1Hr&#43;KjhiZkJs="></script>
+
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+</head>
+
+<body>
+  <input type="checkbox" class="hidden" id="menu-control" />
+  <main class="container flex">
+    <aside class="book-menu">
+      
+  <nav>
+<h2 class="book-brand">
+  <a href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+
+
+
+
+
+
+
+
+
+  <ul>
+<li><a href="/">序章</a></li>
+<li>Swift
+<ul>
+<li><a href="/docs/swift/ch01/01/">Swift Substring</a></li>
+</ul>
+</li>
+<li>iOS
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/ios/runtime/ch01/01/">Objective-C 关联对象原理</a></li>
+</ul>
+</li>
+<li>UI
+<ul>
+<li><a href="/docs/ios/ui/ch01/01/">实现抖音评论列表效果</a></li>
+<li><a href="/docs/ios/ui/ch02/02/">全屏Feed ScrollView嵌套时滑动问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>WWDC 22
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/wwdc22/ch01/01/"class=active>Runtime Performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LLVM
+<ul>
+<li><a href="/docs/llvm/ch01/01/">自定义 LLVM PASS 实现 函数耗时插桩统计</a></li>
+<li><a href="/docs/llvm/ch02/02/">基于 LibTooling 生成 C++ 的 Objective-C++ 包装接口想法初步验证</a></li>
+</ul>
+</li>
+<li>其他
+<ul>
+<li>FFmpeg
+<ul>
+<li><a href="/docs/other/ffmpeg/ch01/01/">iOS 使用 FFmepeg 命令行工具源码实现转码功能</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside.book-menu nav");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+ 
+    </aside>
+
+    <div class="book-page">
+      <header class="book-header">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <strong>运行时优化</strong>
+
+  <label for="toc-control">
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+  </label>
+</div>
+
+
+  
+    <input type="checkbox" class="hidden" id="toc-control" />
+    <aside class="hidden clearfix">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+    </aside>
+  
+ 
+      </header>
+
+      
+<article class="markdown">
+  <h1>运行时优化</h1><h4 id="message-send-优化">Message Send 优化</h4>
+<ul>
+<li>在<code>Objective-C</code>中的方法调用,最终都将转为<code>objc_msgSend</code>调用</li>
+<li>根据其<code>objc_msgSend</code>调用约定其中第一个参数为<code>receiver</code>, 第二个参数为<code>selector</code>
+<img src="./01.png" alt=""></li>
+<li>如上图所示, 每次调用少不了<code>selector</code>准备, 优化之后
+<img src="./02.png" alt="">
+<img src="./03.png" alt=""></li>
+<li>如上图所示,创建了<code>selector</code>对应的<code>stub</code>,将<code>selector</code>参数准备放到了<code>stub</code>中,这样一来<code>stub</code>就可以复用,同时也就少了很多获取<code>selector</code>的 <code>adrp</code> <code>ldr</code>指令,另一方面也就减小了可执行文件大小</li>
+<li>同时这种优化有两种优化模式,如下图所示.
+<img src="./04.png" alt=""></li>
+</ul>
+<h4 id="retain-and-release">Retain and release</h4>
+<ul>
+<li>在<code>ARC</code>中由编译器插入对应的内存处理代码,从而避免手动管理内存
+<img src="./05.png" alt=""></li>
+<li>在调用<code>objc_retain</code> <code>objc_release</code>前都需要准备<code>x0</code>寄存器.而优化的方式则是通过将参数准备调整为一系列<code>objc_retain_xx</code> <code>objc_release_xx</code>调用,
+比如<code>datComponents</code>这个变量从分配到释放一直保持在<code>x20</code>寄存器中,那么在释放时则直接通过 <code>bl _objc_release_x20</code>,也就少了<code>mov x0, x20</code>这条指令,这种优化同样也减小了可执行文件大小
+<img src="./06.png" alt="">
+<img src="./07.png" alt="">
+<img src="./08.png" alt=""></li>
+<li><a href="https://developer.apple.com/videos/play/wwdc2022/110363/">原session Improve app size and runtime performance</a></li>
+</ul>
+
+    <div>
+      <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/edit/master/docs/wwdc22/ch01/01.md" target="_blank" rel="noopener">
+        <img src="/svg/edit.svg" class="book-icon" alt="Edit" />
+        <span>Edit this page</span>
+      </a>
+    </div>
+  
+  <hr/>
+  <img src="" style="max-width: 100%;"/>
+  
+</article>
+
+<div id="gitalk-container"></div>
+<link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script>
+    const gitalk = new Gitalk({
+        clientID: '2c62ad75ef03025b19a5',
+        clientSecret: '0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635',
+        repo: 'blog-comments',
+        owner: '0x1306a94',
+        admin: ['0x1306a94'],
+        id: location.pathname, 
+        distractionFreeMode: false 
+    });
+    (function() {
+        if (["localhost", "127.0.0.1"].indexOf(window.location.hostname) != -1) {
+            document.getElementById('gitalk-container').innerHTML = 'Gitalk comments not available by default when the website is previewed locally.';
+            return;
+        }
+        gitalk.render('gitalk-container');
+    })();
+</script>
+
+ 
+
+      <footer class="book-footer">
+        
+  <div class="flex justify-between">
+
+
+
+  <div>
+    
+    <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/commit/74ef10c01c70ea534ec72748c7833978a92a2105" title='Last modified by 0x1306a94 | June 16, 2022' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="Calendar" />
+      <span>June 16, 2022</span>
+    </a>
+  </div>
+
+</div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+      </footer>
+      
+    </div>
+
+    
+    <aside class="book-toc">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+ 
+    </aside>
+    
+  </main>
+
+  
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Docs on 0x1306a94.com</title>
+    <link>https://blog.0x1306a94.com/docs/</link>
+    <description>Recent content in Docs on 0x1306a94.com</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>zh-CN</language>
+    <lastBuildDate>Thu, 16 Jun 2022 11:15:45 +0800</lastBuildDate><atom:link href="https://blog.0x1306a94.com/docs/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>全屏Feed ScrollView嵌套时滑动问题</title>
+      <link>https://blog.0x1306a94.com/docs/ios/ui/ch02/02/</link>
+      <pubDate>Fri, 27 May 2022 08:00:00 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/ios/ui/ch02/02/</guid>
+      <description>最近在做类似抖音全屏视频Feed的需求,然后其中需要展示最新的部分评论,类似于直播中的评论列表.然后就理所当然的外面是一个UICollectionView, cell里面再嵌套UICollectionView
+从上面视频可以看出, 内层的UICollectionView在其顶部或者底部滑动时会直接响应外层的UICollectionView, 也就导致内层的UICollectionView失去了bounces效果 同时内层UICollectionView在滑动还会修改外层UICollectionView滑动 解决方案1,经过群友C指点 首先解决在内层UICollectionView区域触发滑动时不让外层UICollectionView响应, 子类化外层UICollectionView, 重写-gestureRecognizerShouldBegin: @interface ExternalCollectionView : UICollectionView @end @implementation ExternalCollectionView - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer { CGPoint location = [gestureRecognizer locationInView:self]; UIView *hitView = [self hitTest:location withEvent:nil]; while (hitView != nil) { if (hitView == self) { break; } if ([hitView isKindOfClass:UIScrollView.class]) { return NO; } hitView = [hitView superview]; } return [super gestureRecognizerShouldBegin:gestureRecognizer]; } @end 解决内层,同样子类化内层UICollectionView @interface InnerCustomCollectionView : UICollectionView @end @implementation InnerCustomCollectionView // 私有API - (UIScrollView *)_containingScrollView { // 当出现嵌套时,内层滑动到底或者到顶时,会修改外层的 contentOffset, 从而内层的也就失去了 bounces 效果 return nil; } @end 解决方案2, 逆向分析微信 通过Lookin查看微信的视图层级, 可以看出也是cell里面嵌套,但微信不同的是嵌套不是两层,而是多了一层, 也就是在内层的IM外面又套了一层不能滑动的UIScrollView,然后就可以直接解决上面的两个问题,无需其他黑科技或者处理 </description>
+    </item>
+    
+    <item>
+      <title>自定义 LLVM PASS 实现 函数耗时插桩统计</title>
+      <link>https://blog.0x1306a94.com/docs/llvm/ch01/01/</link>
+      <pubDate>Sun, 20 Dec 2020 13:53:29 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/llvm/ch01/01/</guid>
+      <description>下载源码 mkdir LLVM cd LLVM wget https://github.com/llvm/llvm-project/archive/llvmorg-11.0.0.zip unzip llvmorg-11.0.0.zip 编写编译脚本 在 LLVM 目录下,创建一个build.sh文件,拷贝下面内容 #!/usr/bin/env bash set -e set -o pipefail set -u ROOT_DIR=`pwd` SOURCE_CODE_DIR=$ROOT_DIR/llvm-project-llvmorg-11.0.0 BUILD_DIR=$ROOT_DIR/build_dir LLVM_BUILD_DIR=$BUILD_DIR/build_llvm LLVM_OUT_DIR=$BUILD_DIR/build_llvm_out CLANG_BUILD_DIR=$BUILD_DIR/build_clang CLANG_OUT_DIR=$BUILD_DIR/build_clang_out XCODE_BUILD_DIR=$BUILD_DIR/build_xcode XCODE_OUT_DIR=$BUILD_DIR/build_xcode_out function build_llvm() { echo &amp;#34;generate llvm ninja build config ...&amp;#34; cd $LLVM_BUILD_DIR cmake -G &amp;#34;Ninja&amp;#34; \ -DCMAKE_OSX_DEPLOYMENT_TARGET=&amp;#34;10.14&amp;#34; \ -DCMAKE_OSX_SYSROOT=&amp;#34;macosx&amp;#34; \ -DCMAKE_OSX_ARCHITECTURES=&amp;#39;x86_64&amp;#39; \ -DLLVM_TARGETS_TO_BUILD=&amp;#34;X86&amp;#34; \ -DCMAKE_BUILD_TYPE=Release \ -DCMAKE_INSTALL_PREFIX=$LLVM_OUT_DIR \ $SOURCE_CODE_DIR/llvm echo &amp;#34;ninja build llvm ...&amp;#34; ninja install } function build_clang() { echo &amp;#34;generate clang ninja build config .</description>
+    </item>
+    
+    <item>
+      <title>实现抖音评论列表效果</title>
+      <link>https://blog.0x1306a94.com/docs/ios/ui/ch01/01/</link>
+      <pubDate>Sat, 31 Oct 2020 13:00:29 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/ios/ui/ch01/01/</guid>
+      <description>通过Lookin查看视图层级可得知: 首页是一个导航栏控制器, 其 rootViewController 为 AWEFeedRootViewController AWEFeedContainerViewController 为视频列表的控制器, 同时 AWEFeedContainerViewController 做为 AWEFeedRootViewController 的 childViewController AWECommentListViewController 为评论弹层, AWECommentListViewController 并未采用 addChildViewController 方式加入 AWEFeedContainerViewController 作为其 childViewController, 而是直接将 AWECommentListViewController.view 添加到 AWEFeedRootViewController.view AWECommentListViewController 的视图层级如下: baseView effectView 为 UIVisualEffectView 实现模糊效果 headerView tableView keyboardMaskView 当键盘弹出时,才显示,用于实现点击上半部分关闭键盘 commentInputView 底部输入框 抖音评论列表有以下效果: 无评论数据时,整个 baseView 区域可以通过手势往下滑动以关闭列表 有评论数据时,下滑tableView到顶时继续往下滑动,则会让baseView和commentInputView同步联动往下滑 同时还有两个细节个人认为没有处理好: 当往下联动后再往上滑动无法触发tableView继续往上滑动 当tableView已经往上滑动了一部分后,从headerView区域无法触发滑动,只能先通过tableView触发,然后激活联动处理 接下来通过逆向分析得知: 通过上面分析的视图层级,找到baseView, 发现baseView自身被添加了一个UIPanGestureRecognizer UIPanGestureRecognizer 的 target 为 AWECommentListViewController UIPanGestureRecognizer 的 action 为 AWECommentListViewController 的 selfPanned: UIPanGestureRecognizer 的 delegate 为 AWECommentListViewController 大致确定了整个联动处理是依靠baseView的手势和tableView自身的手势共同完成 iPhone:~ root# cycript -p Aweme cy# UIApp.</description>
+    </item>
+    
+    <item>
+      <title>Objective C 关联对象原理</title>
+      <link>https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 11:06:35 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/ios/runtime/ch01/01/</guid>
+      <description>如何使用? 首先需要导入 &amp;lt;objc/runtime.h&amp;gt; 头文件
+然后通过 runtime 如下 API
+// 为 object 设置关联值 OBJC_EXPORT void objc_setAssociatedObject(id _Nonnull object, const void * _Nonnull key, id _Nullable value, objc_AssociationPolicy policy) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 获取 object 关联值 OBJC_EXPORT id _Nullable objc_getAssociatedObject(id _Nonnull object, const void * _Nonnull key) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); // 移除 object 所有关联值 OBJC_EXPORT void objc_removeAssociatedObjects(id _Nonnull object) OBJC_AVAILABLE(10.6, 3.1, 9.0, 1.0, 2.0); 示例代码一
+#import &amp;lt;Foundation/Foundation.h&amp;gt; #import &amp;lt;objc/runtime.</description>
+    </item>
+    
+    <item>
+      <title>运行时优化</title>
+      <link>https://blog.0x1306a94.com/docs/wwdc22/ch01/01/</link>
+      <pubDate>Thu, 16 Jun 2022 11:15:45 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/wwdc22/ch01/01/</guid>
+      <description>Message Send 优化 在Objective-C中的方法调用,最终都将转为objc_msgSend调用 根据其objc_msgSend调用约定其中第一个参数为receiver, 第二个参数为selector 如上图所示, 每次调用少不了selector准备, 优化之后 如上图所示,创建了selector对应的stub,将selector参数准备放到了stub中,这样一来stub就可以复用,同时也就少了很多获取selector的 adrp ldr指令,另一方面也就减小了可执行文件大小 同时这种优化有两种优化模式,如下图所示. Retain and release 在ARC中由编译器插入对应的内存处理代码,从而避免手动管理内存 在调用objc_retain objc_release前都需要准备x0寄存器.而优化的方式则是通过将参数准备调整为一系列objc_retain_xx objc_release_xx调用, 比如datComponents这个变量从分配到释放一直保持在x20寄存器中,那么在释放时则直接通过 bl _objc_release_x20,也就少了mov x0, x20这条指令,这种优化同样也减小了可执行文件大小 原session Improve app size and runtime performance </description>
+    </item>
+    
+    <item>
+      <title>基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</title>
+      <link>https://blog.0x1306a94.com/docs/llvm/ch02/02/</link>
+      <pubDate>Wed, 25 Aug 2021 09:27:34 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/llvm/ch02/02/</guid>
+      <description>产生这个想法,源于一位大佬问我 Swift 调用 C++ 的解决方案是啥?
+已知方案 C 包装 C++ Objective-C++ 包装 C++ 上面两种方式都需收开发人员手动去写对应的包装接口,作为一个新生代的农民工,应该想办法自动的完成这件事,为自己挤出更多的摸鱼划水的时间。
+如何自动生成？ 之前在研究一个动态二维码code时,一开始是用Rust实现了一遍,然后通过Rust生成 ffi接口,以供iOS Android使用。Rust 通过在函数使用 extern &amp;quot;C&amp;quot; #[no_mangle]。然后通过 cbindgen 这类工具即可自动生成对应的 ffi 接口 所以我就想，能不能用类似的方式，在C++的类，函数上加点料，然后再通过一个工具，找出这些，自动生成对应的 Objective-C++ 答案是可以的， 可以利用 __attribute__((annotate())) 这个料又如何读出来呢？ AST 示例 #ifndef annotate_h #define annotate_h #define GEN_ANNOTATE_CLASS __attribute__((annotate(&amp;#34;native_gen_class&amp;#34;))) #define GEN_ANNOTATE_METHOD __attribute__((annotate(&amp;#34;native_gen_method&amp;#34;))) #define GEN_ANNOTATE_INCLUDE __attribute__((annotate(&amp;#34;native_gen_class_include&amp;#34;))) #endif /* annotate_h */ #ifndef kit_hpp #define kit_hpp #include &amp;lt;string&amp;gt; #include &amp;#34;annotate.h&amp;#34; using namespace std; namespace TT { struct GEN_ANNOTATE_CLASS GEN_ANNOTATE_INCLUDE Kit { int a = 0; GEN_ANNOTATE_METHOD bool vaild() const; }; }; // namespace TT class GEN_ANNOTATE_CLASS Kit2 { int a = 0; bool vaild() const; GEN_ANNOTATE_METHOD void test(string str); GEN_ANNOTATE_METHOD void test2(const char *str); }; #endif /* kit_hpp */ 打印AST clang++ -Xclang -ast-dump -fsyntax-only kit.</description>
+    </item>
+    
+    <item>
+      <title>iOS使用FFmepeg命令行工具源码实现转码功能</title>
+      <link>https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 12:21:15 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/</guid>
+      <description>1 编译FFmpeg 下载FFmpeg-iOS-build-script 修改脚本如下位置 # 可改可不改 SCRATCH=&amp;#34;scratch-ffmpeg&amp;#34; # 可改可不改 # must be an absolute path THIN=`pwd`/&amp;#34;thin-ffmpeg&amp;#34; # absolute path to x264 library #X264=`pwd`/fat-x264 #FDK_AAC=`pwd`/../fdk-aac-build-script-for-iOS/fdk-aac-ios # 修改 CONFIGURE_FLAGS 为如下 CONFIGURE_FLAGS=&amp;#34;--enable-cross-compile \ --disable-debug \ --disable-programs \ --disable-ffmpeg \ --disable-ffplay \ --disable-ffprobe \ --disable-doc \ --enable-pic \ --disable-sdl2 \ --enable-videotoolbox \ --enable-avresample&amp;#34; # 只编译如下架构 ARCHS=&amp;#34;arm64 x86_64&amp;#34; 执行./build-ffmpeg.sh,等待编译完成,编译完成后再执行./build-ffmpeg.sh lipo合并所有架构的库 2 集成工程 将编译后的 静态库以及头文件导出工程, 并设置 HEADER SEARCH PATH 在项目中新建一个command-line文件夹
+新建config.h x86_64_config.h arm64_config.h
+在config.h中写入一下内容
+#if defined(__x86_64__) #include &amp;#34;x86_64_config.</description>
+    </item>
+    
+    <item>
+      <title>Swift Substring</title>
+      <link>https://blog.0x1306a94.com/docs/swift/ch01/01/</link>
+      <pubDate>Tue, 25 Feb 2020 11:06:35 +0800</pubDate>
+      
+      <guid>https://blog.0x1306a94.com/docs/swift/ch01/01/</guid>
+      <description>Swift SubString 操作 import Foundation extension String { subscript(value: PartialRangeUpTo&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[..&amp;lt;index(startIndex, offsetBy: value.upperBound)] } } subscript(value: PartialRangeThrough&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[...index(startIndex, offsetBy: value.upperBound)] } } subscript(value: PartialRangeFrom&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { return self[index(startIndex, offsetBy: value.lowerBound)...] } } subscript(value: CountableRange&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { let start = index(self.startIndex, offsetBy: value.lowerBound) let end = index(self.startIndex, offsetBy: value.upperBound) return self[start..&amp;lt;end] } } subscript(value: ClosedRange&amp;lt;Int&amp;gt;) -&amp;gt; Substring { get { let start = index(self.</description>
+    </item>
+    
+  </channel>
+</rss>

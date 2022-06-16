@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="iOS使用FFmepeg命令行工具源码实现转码功能"><meta property="og:title" content="iOS使用FFmepeg命令行工具源码实现转码功能" />
+<meta property="og:description" content="1 编译FFmpeg 下载FFmpeg-iOS-build-script 修改脚本如下位置 # 可改可不改 SCRATCH=&#34;scratch-ffmpeg&#34; # 可改可不改 # must be an absolute path THIN=`pwd`/&#34;thin-ffmpeg&#34; # absolute path to x264 library #X264=`pwd`/fat-x264 #FDK_AAC=`pwd`/../fdk-aac-build-script-for-iOS/fdk-aac-ios # 修改 CONFIGURE_FLAGS 为如下 CONFIGURE_FLAGS=&#34;--enable-cross-compile \ --disable-debug \ --disable-programs \ --disable-ffmpeg \ --disable-ffplay \ --disable-ffprobe \ --disable-doc \ --enable-pic \ --disable-sdl2 \ --enable-videotoolbox \ --enable-avresample&#34; # 只编译如下架构 ARCHS=&#34;arm64 x86_64&#34; 执行./build-ffmpeg.sh,等待编译完成,编译完成后再执行./build-ffmpeg.sh lipo合并所有架构的库 2 集成工程 将编译后的 静态库以及头文件导出工程, 并设置 HEADER SEARCH PATH 在项目中新建一个command-line文件夹
+新建config.h x86_64_config.h arm64_config.h
+在config.h中写入一下内容
+#if defined(__x86_64__) #include &#34;x86_64_config." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://blog.0x1306a94.com/docs/other/ffmpeg/ch01/01/" /><meta property="article:section" content="docs" />
+<meta property="article:published_time" content="2020-02-25T12:21:15+08:00" />
+<meta property="article:modified_time" content="2022-06-16T13:06:12+08:00" />
+
+<title>iOS使用FFmepeg命令行工具源码实现转码功能 | 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+
+
+<link rel="stylesheet" href="/book.min.e56ae18661d37ebd7511f1db8c09f79d77ae712cf40a3d7441d2603da99ed001.css" integrity="sha256-5WrhhmHTfr11EfHbjAn3nXeucSz0Cj10QdJgPame0AE=">
+
+
+<script defer src="/en.search.min.7842bdd1df86a43bced2fa8e8d67fa7ccd10896c9fc845351ebf8a8e1899909b.js" integrity="sha256-eEK90d&#43;GpDvO0vqOjWf6fM0QiWyfyEU1Hr&#43;KjhiZkJs="></script>
+
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+</head>
+
+<body>
+  <input type="checkbox" class="hidden" id="menu-control" />
+  <main class="container flex">
+    <aside class="book-menu">
+      
+  <nav>
+<h2 class="book-brand">
+  <a href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+
+
+
+
+
+
+
+
+
+  <ul>
+<li><a href="/">序章</a></li>
+<li>Swift
+<ul>
+<li><a href="/docs/swift/ch01/01/">Swift Substring</a></li>
+</ul>
+</li>
+<li>iOS
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/ios/runtime/ch01/01/">Objective-C 关联对象原理</a></li>
+</ul>
+</li>
+<li>UI
+<ul>
+<li><a href="/docs/ios/ui/ch01/01/">实现抖音评论列表效果</a></li>
+<li><a href="/docs/ios/ui/ch02/02/">全屏Feed ScrollView嵌套时滑动问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>WWDC 22
+<ul>
+<li>Runtime
+<ul>
+<li><a href="/docs/wwdc22/ch01/01/">Runtime Performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>LLVM
+<ul>
+<li><a href="/docs/llvm/ch01/01/">自定义 LLVM PASS 实现 函数耗时插桩统计</a></li>
+<li><a href="/docs/llvm/ch02/02/">基于 LibTooling 生成 C++ 的 Objective-C++ 包装接口想法初步验证</a></li>
+</ul>
+</li>
+<li>其他
+<ul>
+<li>FFmpeg
+<ul>
+<li><a href="/docs/other/ffmpeg/ch01/01/"class=active>iOS 使用 FFmepeg 命令行工具源码实现转码功能</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside.book-menu nav");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+ 
+    </aside>
+
+    <div class="book-page">
+      <header class="book-header">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <strong>iOS使用FFmepeg命令行工具源码实现转码功能</strong>
+
+  <label for="toc-control">
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+  </label>
+</div>
+
+
+  
+    <input type="checkbox" class="hidden" id="toc-control" />
+    <aside class="hidden clearfix">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+    </aside>
+  
+ 
+      </header>
+
+      
+<article class="markdown">
+  <h1>iOS使用FFmepeg命令行工具源码实现转码功能</h1><h4 id="1-编译ffmpeg">1 编译<code>FFmpeg</code></h4>
+<ul>
+<li>下载<a href="https://github.com/kewlbear/FFmpeg-iOS-build-script">FFmpeg-iOS-build-script</a></li>
+<li>修改脚本如下位置</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span><span style="color:#75715e"># 可改可不改</span>
+</span></span><span style="display:flex;"><span>SCRATCH<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;scratch-ffmpeg&#34;</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 可改可不改</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># must be an absolute path</span>
+</span></span><span style="display:flex;"><span>THIN<span style="color:#f92672">=</span><span style="color:#e6db74">`</span>pwd<span style="color:#e6db74">`</span>/<span style="color:#e6db74">&#34;thin-ffmpeg&#34;</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># absolute path to x264 library</span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#X264=`pwd`/fat-x264</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#FDK_AAC=`pwd`/../fdk-aac-build-script-for-iOS/fdk-aac-ios</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 修改 CONFIGURE_FLAGS 为如下</span>
+</span></span><span style="display:flex;"><span>CONFIGURE_FLAGS<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;--enable-cross-compile \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">			--disable-debug \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">			--disable-programs \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">			--disable-ffmpeg \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">			--disable-ffplay \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">			--disable-ffprobe \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">        --disable-doc \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">        --enable-pic \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">        --disable-sdl2 \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">        --enable-videotoolbox \
+</span></span></span><span style="display:flex;"><span><span style="color:#e6db74">        --enable-avresample&#34;</span>
+</span></span><span style="display:flex;"><span>                 
+</span></span><span style="display:flex;"><span><span style="color:#75715e"># 只编译如下架构</span>
+</span></span><span style="display:flex;"><span>ARCHS<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;arm64 x86_64&#34;</span>
+</span></span></code></pre></div><ul>
+<li>执行<code>./build-ffmpeg.sh</code>,等待编译完成,编译完成后再执行<code>./build-ffmpeg.sh lipo</code>合并所有架构的库</li>
+</ul>
+<h4 id="2-集成工程">2 集成工程</h4>
+<ul>
+<li>
+<p>将编译后的 静态库以及头文件导出工程, 并设置 <code>HEADER SEARCH PATH</code>
+<img src="./WX20181112-203116@2x.png" alt="">
+<img src="./WX20181113-083946@2x.png" alt=""></p>
+</li>
+<li>
+<p>在项目中新建一个<code>command-line</code>文件夹</p>
+</li>
+<li>
+<p>新建<code>config.h</code> <code>x86_64_config.h</code> <code>arm64_config.h</code></p>
+</li>
+<li>
+<p>在<code>config.h</code>中写入一下内容</p>
+</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#75715e">#if defined(__x86_64__)
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;x86_64_config.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#else
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;arm64_config.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#endif
+</span></span></span></code></pre></div><ul>
+<li>
+<p>在编译<code>ffmepg</code> 生成的 <code>scratch</code>目录将对于架构目录下的<code>config.h</code>文件内容拷贝上面对应的文件中
+<img src="./WX20181113-083239@2x.png" alt=""></p>
+</li>
+<li>
+<p>在<code>ffmepg</code>源码目录<code>fftools</code>目录中将以下文件导入工程中
+<img src="./WX20181113-085058@2x.png" alt=""></p>
+</li>
+<li>
+<p>在源码目录中搜索<code>cmdutils_common_opts.h</code>文件,同样导入工程</p>
+</li>
+<li>
+<p>在<code>ffmpeg.h</code>文件最后,添加以下代码</p>
+</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#66d9ef">typedef</span> <span style="color:#a6e22e">void</span>(<span style="color:#f92672">*</span>FFmpegCallBack)(<span style="color:#66d9ef">int64_t</span>, <span style="color:#66d9ef">int64_t</span>);
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">int</span> <span style="color:#a6e22e">ffmpeg_main</span>(<span style="color:#66d9ef">int</span> argc, <span style="color:#66d9ef">char</span> <span style="color:#f92672">**</span>argv, FFmpegCallBack callback);
+</span></span></code></pre></div><ul>
+<li>修改<code>ffmepg.c</code>文件中<code>int main(int argc, char **argv)</code> 为 <code>int ffmpeg_main(int argc, char **argv, FFmpegCallBack callback)</code></li>
+<li>修改<code>ffmpeg.c</code>文件中<code>static void ffmpeg_cleanup(int ret)</code>函数</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#75715e">// 在 static void ffmpeg_cleanup(int ret) 函数末尾 添加以下代码
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#75715e">#warning 置空相关计数器
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    nb_filtergraphs <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    nb_output_files <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    nb_output_streams <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    nb_input_files <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    nb_input_streams <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span></code></pre></div><ul>
+<li>修改<code>cmdutils.c</code>文件,首先在头部导入<code>#include &lt;pthread/pthread.h&gt;</code> 然后修改<code>void exit_program(int ret)</code>函数</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#66d9ef">void</span> <span style="color:#a6e22e">exit_program</span>(<span style="color:#66d9ef">int</span> ret)
+</span></span><span style="display:flex;"><span>{
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (program_exit)
+</span></span><span style="display:flex;"><span>        program_exit(ret);
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#warning 由于iOS应用是单进程,如果使用 exit 退出进程,则应用会被退出,因此改为退出线程
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#75715e">//    exit(ret);
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>    pthread_exit(NULL);
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><ul>
+<li>处理进度回调</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span><span style="color:#75715e">// 修改 ffmpeg.c 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">int</span> <span style="color:#a6e22e">transcode</span>(<span style="color:#66d9ef">void</span>)
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 修改如下
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">int</span> transcode(FFmpegCallBack callback)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 修改 ffmpeg.c 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> print_report(<span style="color:#66d9ef">int</span> is_last_report, <span style="color:#66d9ef">int64_t</span> timer_start, <span style="color:#66d9ef">int64_t</span> cur_time)
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 修改如下
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> print_report(<span style="color:#66d9ef">int</span> is_last_report, <span style="color:#66d9ef">int64_t</span> timer_start, <span style="color:#66d9ef">int64_t</span> cur_time, FFmpegCallBack callback)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 在如下函数 
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> print_report(<span style="color:#66d9ef">int</span> is_last_report, <span style="color:#66d9ef">int64_t</span> timer_start, <span style="color:#66d9ef">int64_t</span> cur_time, FFmpegCallBack callback) 
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 1685 行位置 添加如下代码
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">int64_t</span> total_frames_number <span style="color:#f92672">=</span> input_files[<span style="color:#ae81ff">0</span>]<span style="color:#f92672">-&gt;</span>ctx<span style="color:#f92672">-&gt;</span>streams[<span style="color:#ae81ff">0</span>]<span style="color:#f92672">-&gt;</span>nb_frames;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 将 1716 ~ 1717 行代码改为如下代码
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span><span style="color:#66d9ef">if</span> (is_last_report) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (callback <span style="color:#f92672">!=</span> NULL) {
+</span></span><span style="display:flex;"><span>        (<span style="color:#f92672">*</span>callback)(total_frames_number, total_frames_number);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    av_bprintf(<span style="color:#f92672">&amp;</span>buf, <span style="color:#e6db74">&#34;L&#34;</span>);
+</span></span><span style="display:flex;"><span>} <span style="color:#66d9ef">else</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (callback <span style="color:#f92672">!=</span> NULL) {
+</span></span><span style="display:flex;"><span>        (<span style="color:#f92672">*</span>callback)((<span style="color:#66d9ef">int64_t</span>)frame_number, total_frames_number);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><ul>
+<li>此时肯定是编译不通过的,因为还缺少文件, 在源码目录搜索以下文件,导入工程对应的位置 <code>请注意导入对应源码目录中的文件</code></li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-c" data-lang="c"><span style="display:flex;"><span>libavcodec<span style="color:#f92672">/</span>mathops.h
+</span></span><span style="display:flex;"><span>libavcodec<span style="color:#f92672">/</span>arm<span style="color:#f92672">/</span>mathops.h
+</span></span><span style="display:flex;"><span>libavcodec<span style="color:#f92672">/</span>x86<span style="color:#f92672">/</span>mathops.h
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span><span style="color:#66d9ef">thread</span>.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>libm.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>internal.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>timer.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>aarch64<span style="color:#f92672">/</span>timer.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>arm<span style="color:#f92672">/</span>timer.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>x86<span style="color:#f92672">/</span>timer.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>x86<span style="color:#f92672">/</span><span style="color:#66d9ef">asm</span>.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>x86<span style="color:#f92672">/</span>emms.h
+</span></span><span style="display:flex;"><span>libavutil<span style="color:#f92672">/</span>reverse.h
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>libavformat<span style="color:#f92672">/</span>network.h
+</span></span><span style="display:flex;"><span>libavformat<span style="color:#f92672">/</span>os_support.h
+</span></span><span style="display:flex;"><span>libavformat<span style="color:#f92672">/</span>url.h
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>compat<span style="color:#f92672">/</span>va_copy.h
+</span></span></code></pre></div><p><img src="./WX20181113-091152@2x.png" alt="">
+<img src="./WX20181113-091220@2x.png" alt=""></p>
+<h4 id="3-如何使用">3 如何使用</h4>
+<ul>
+<li>将<code>Objective-C</code>类型参数转为<code>C</code>类型参数,然后传入<code>ffmpeg_main</code> <a href="https://github.com/0x1306a94/Video-Demo">Video-Demo</a></li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-Objective-C" data-lang="Objective-C"><span style="display:flex;"><span><span style="color:#66d9ef">static</span> NSDate <span style="color:#f92672">*</span>date <span style="color:#f92672">=</span> nil;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">__FFmpegCallBack</span>(int64_t current, int64_t total) {
+</span></span><span style="display:flex;"><span>    NSLog(<span style="color:#e6db74">@&#34;转码进度: %lld/%lld&#34;</span>, current, total);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> ((current <span style="color:#f92672">/</span> total) <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">1</span>) {
+</span></span><span style="display:flex;"><span>        int64_t time <span style="color:#f92672">=</span> (int64_t)([NSDate date].timeIntervalSince1970 <span style="color:#f92672">-</span> date.timeIntervalSince1970);
+</span></span><span style="display:flex;"><span>        int64_t hours <span style="color:#f92672">=</span> time <span style="color:#f92672">%</span> (<span style="color:#ae81ff">24</span><span style="color:#f92672">*</span><span style="color:#ae81ff">3600</span>) <span style="color:#f92672">/</span> <span style="color:#ae81ff">3600</span>;
+</span></span><span style="display:flex;"><span>        int64_t minutes <span style="color:#f92672">=</span> time <span style="color:#f92672">%</span> <span style="color:#ae81ff">3600</span> <span style="color:#f92672">/</span> <span style="color:#ae81ff">60</span>;
+</span></span><span style="display:flex;"><span>        int64_t second <span style="color:#f92672">=</span> time <span style="color:#f92672">%</span> <span style="color:#ae81ff">60</span>;
+</span></span><span style="display:flex;"><span>        NSLog(<span style="color:#e6db74">@&#34;转码完成, 耗时: %02lld:%02lld:%02lld&#34;</span>, hours, minutes, second);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>- (<span style="color:#66d9ef">void</span>)<span style="color:#a6e22e">startFFmpeg:</span>(NSArray<span style="color:#f92672">&lt;</span>NSString <span style="color:#f92672">*&gt;</span> <span style="color:#f92672">*</span>)commands {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">@autoreleasepool</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> argc <span style="color:#f92672">=</span> (<span style="color:#66d9ef">int</span>)commands.count <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">char</span> <span style="color:#f92672">**</span>argv[argc];
+</span></span><span style="display:flex;"><span>        argv[<span style="color:#ae81ff">0</span>] <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;ffmpeg&#34;</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> idx <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (NSString <span style="color:#f92672">*</span>cmd <span style="color:#66d9ef">in</span> commands) {
+</span></span><span style="display:flex;"><span>            argv[idx] <span style="color:#f92672">=</span> cmd.UTF8String;
+</span></span><span style="display:flex;"><span>            idx<span style="color:#f92672">++</span>;
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>        NSString <span style="color:#f92672">*</span>finalCommand <span style="color:#f92672">=</span> [NSString stringWithFormat:<span style="color:#e6db74">@&#34;ffmpeg 运行参数: </span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">ffmpeg %@&#34;</span>, [commands componentsJoinedByString:<span style="color:#e6db74">@&#34; &#34;</span>]];
+</span></span><span style="display:flex;"><span>        NSLog(<span style="color:#e6db74">@&#34;%@</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">%@&#34;</span>, finalCommand, [NSThread currentThread].name);
+</span></span><span style="display:flex;"><span>        date <span style="color:#f92672">=</span> [NSDate date];
+</span></span><span style="display:flex;"><span>        ffmpeg_main(argc, argv, <span style="color:#f92672">&amp;</span>__FFmpegCallBack);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// 使用 NSThread 线程调用
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>input_path <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;xxxx&#34;</span>; <span style="color:#75715e">// 输入视频路径
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>ouput_path <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;xxxx&#34;</span>; <span style="color:#75715e">// 输出视频路径
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>video_size <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;1920x1080&#34;</span>; <span style="color:#75715e">// 输出视频尺寸
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>video_bit_rate <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;6000k&#34;</span>; <span style="color:#75715e">// 输出视频码率
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>video_code <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;h264_videotoolbox&#34;</span>; <span style="color:#75715e">// 视频编码器
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>video_frame_rate <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;30&#34;</span>; <span style="color:#75715e">// 视频帧率
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>
+</span></span><span style="display:flex;"><span>NSString <span style="color:#f92672">*</span>audio_bit_rate <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;64k&#34;</span>; <span style="color:#75715e">// 音频码率
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>audio_sample_rate <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;44.1k&#34;</span>; <span style="color:#75715e">// 音频采样率
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>audio_channels <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;1&#34;</span>; <span style="color:#75715e">// 音频声道数
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSString <span style="color:#f92672">*</span>audio_code <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;aac&#34;</span>; <span style="color:#75715e">// 音频编码器
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e"></span>NSArray<span style="color:#f92672">&lt;</span>NSString <span style="color:#f92672">*&gt;</span> <span style="color:#f92672">*</span>commands <span style="color:#f92672">=</span> <span style="color:#ae81ff">@[</span><span style="color:#e6db74">@&#34;-y&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-i&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  input_path,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-s&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  video_size,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-b:v&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  video_bit_rate,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-vcodec&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  video_code,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-r&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  video_frame_rate,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-b:a&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  audio_bit_rate,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-ar&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  audio_sample_rate,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-ac&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  audio_channels,
+</span></span><span style="display:flex;"><span>                                  <span style="color:#e6db74">@&#34;-acodec&#34;</span>,
+</span></span><span style="display:flex;"><span>                                  audio_code,
+</span></span><span style="display:flex;"><span>                                  ouput_path<span style="color:#ae81ff">]</span>;
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>NSThread <span style="color:#f92672">*</span><span style="color:#66d9ef">thread</span> <span style="color:#f92672">=</span> [[NSThread alloc] initWithTarget:self selector:<span style="color:#66d9ef">@selector</span>(startFFmpeg:) object:commands];
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">thread</span>.name <span style="color:#f92672">=</span> <span style="color:#e6db74">@&#34;ffmpeg.transcode.thread&#34;</span>;
+</span></span><span style="display:flex;"><span>[<span style="color:#66d9ef">thread</span> start];
+</span></span></code></pre></div><ul>
+<li>测试视频信息,测试转码设备 <code>iPhone X 64G</code>
+<img src="./WX20181113-095353@2x.png" alt=""></li>
+<li>转码后视频信息
+<img src="./WX20181113-095446@2x.png" alt="">
+<img src="./WX20181113-094619@2x.png" alt="">
+<img src="./WX20181113-095216@2x.png" alt=""></li>
+</ul>
+
+    <div>
+      <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/edit/master/docs/other/ffmpeg/ch01/01.md" target="_blank" rel="noopener">
+        <img src="/svg/edit.svg" class="book-icon" alt="Edit" />
+        <span>Edit this page</span>
+      </a>
+    </div>
+  
+  <hr/>
+  <img src="" style="max-width: 100%;"/>
+  
+</article>
+
+<div id="gitalk-container"></div>
+<link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css">
+<script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script>
+    const gitalk = new Gitalk({
+        clientID: '2c62ad75ef03025b19a5',
+        clientSecret: '0a6d43f50f6eead8e28a0ef8cfb3ae6dcbc25635',
+        repo: 'blog-comments',
+        owner: '0x1306a94',
+        admin: ['0x1306a94'],
+        id: location.pathname, 
+        distractionFreeMode: false 
+    });
+    (function() {
+        if (["localhost", "127.0.0.1"].indexOf(window.location.hostname) != -1) {
+            document.getElementById('gitalk-container').innerHTML = 'Gitalk comments not available by default when the website is previewed locally.';
+            return;
+        }
+        gitalk.render('gitalk-container');
+    })();
+</script>
+
+ 
+
+      <footer class="book-footer">
+        
+  <div class="flex justify-between">
+
+
+
+  <div>
+    
+    <a class="flex align-center" href="https://github.com/0x1306a94/blog-content/commit/74ef10c01c70ea534ec72748c7833978a92a2105" title='Last modified by 0x1306a94 | June 16, 2022' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="Calendar" />
+      <span>June 16, 2022</span>
+    </a>
+  </div>
+
+</div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+      </footer>
+      
+    </div>
+
+    
+    <aside class="book-toc">
+      
+  <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+ 
+    </aside>
+    
+  </main>
+
+  
+</body>
+
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
