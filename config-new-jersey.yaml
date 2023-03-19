@@ -1,0 +1,23 @@
+baseURL: https://new.0x1306a94.com
+title: 0x1306a94.com
+relativeURLs: false
+languageCode: zh-CN
+theme: book
+
+enableGitInfo: true
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  tableOfContents:
+    startLevel: 1
+
+# menu:
+#   before:
+#     - name: "Github"
+#       url: "https://github.com/alex-shpak/hugo-book"
+#       weight: 10
+#     - name: "Hugo Themes"
+#       url: "https://themes.gohugo.io/hugo-book/"
+#       weight: 20
