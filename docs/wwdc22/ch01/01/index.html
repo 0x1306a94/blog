@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN" dir="ltr">
+<head>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Message Send 优化# 在Objective-C中的方法调用,最终都将转为objc_msgSend调用 根据其objc_msgSend调用约定其中第一个参数为receiver, 第二个参数为selector 如上图所示, 每次调用少不了selector准备, 优化之后 如上图所示,创建了selector对应的stub,将selector参数准备放到了stub中,这样一来stub就可以复用,同时也就少了很多获取selector的 adrp ldr指令,另一方面也就减小了可执行文件大小 同时这种优化有两种优化模式,如下图所示. Retain and release# 在ARC中由编译器插入对应的内存处理代码,从而避免手动管理内存 在调用objc_retain objc_release前都需要准备x0寄存器.而优化的方式则是通过将参数准备调整为一系列objc_retain_xx objc_release_xx调用, 比如datComponents这个变量从分配到释放一直保持在x20寄存器中,那么在释放时则直接通过 bl _objc_release_x20,也就少了mov x0, x20这条指令,这种优化同样也减小了可执行文件大小 原session Improve app size and runtime performance ">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#2e3440">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="https://blog.0x1306a94.com/docs/wwdc22/ch01/01/">
+  <meta property="og:site_name" content="0x1306a94.com">
+  <meta property="og:title" content="运行时优化">
+  <meta property="og:description" content="Message Send 优化# 在Objective-C中的方法调用,最终都将转为objc_msgSend调用 根据其objc_msgSend调用约定其中第一个参数为receiver, 第二个参数为selector 如上图所示, 每次调用少不了selector准备, 优化之后 如上图所示,创建了selector对应的stub,将selector参数准备放到了stub中,这样一来stub就可以复用,同时也就少了很多获取selector的 adrp ldr指令,另一方面也就减小了可执行文件大小 同时这种优化有两种优化模式,如下图所示. Retain and release# 在ARC中由编译器插入对应的内存处理代码,从而避免手动管理内存 在调用objc_retain objc_release前都需要准备x0寄存器.而优化的方式则是通过将参数准备调整为一系列objc_retain_xx objc_release_xx调用, 比如datComponents这个变量从分配到释放一直保持在x20寄存器中,那么在释放时则直接通过 bl _objc_release_x20,也就少了mov x0, x20这条指令,这种优化同样也减小了可执行文件大小 原session Improve app size and runtime performance">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="docs">
+    <meta property="article:published_time" content="2022-06-16T11:15:45+08:00">
+    <meta property="article:modified_time" content="2022-06-16T11:15:45+08:00">
+
+
+  <meta itemprop="name" content="运行时优化">
+  <meta itemprop="description" content="Message Send 优化# 在Objective-C中的方法调用,最终都将转为objc_msgSend调用 根据其objc_msgSend调用约定其中第一个参数为receiver, 第二个参数为selector 如上图所示, 每次调用少不了selector准备, 优化之后 如上图所示,创建了selector对应的stub,将selector参数准备放到了stub中,这样一来stub就可以复用,同时也就少了很多获取selector的 adrp ldr指令,另一方面也就减小了可执行文件大小 同时这种优化有两种优化模式,如下图所示. Retain and release# 在ARC中由编译器插入对应的内存处理代码,从而避免手动管理内存 在调用objc_retain objc_release前都需要准备x0寄存器.而优化的方式则是通过将参数准备调整为一系列objc_retain_xx objc_release_xx调用, 比如datComponents这个变量从分配到释放一直保持在x20寄存器中,那么在释放时则直接通过 bl _objc_release_x20,也就少了mov x0, x20这条指令,这种优化同样也减小了可执行文件大小 原session Improve app size and runtime performance">
+  <meta itemprop="datePublished" content="2022-06-16T11:15:45+08:00">
+  <meta itemprop="dateModified" content="2022-06-16T11:15:45+08:00">
+  <meta itemprop="wordCount" content="32">
+
+<title>运行时优化 • 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="https://blog.0x1306a94.com/docs/wwdc22/ch01/01/">
+<link rel="stylesheet" href="/book.min.7dca40f168e2fd532b7b1937df678e5fcb9289577e924bd85f799138b6137fa6.css" integrity="sha256-fcpA8Wji/VMrexk332eOX8uSiVd&#43;kkvYX3mROLYTf6Y=" crossorigin="anonymous">
+
+
+  <script defer type="module" src="/en.search.min.a065d1c80af7beaff68b7c9629c5e374db141794c9c1b23c68e6875349454e71.js" integrity="sha256-oGXRyAr3vq/2i3yWKcXjdNsUF5TJwbI8aOaHU0lFTnE=" crossorigin="anonymous"></script>
+
+  
+</head>
+<body dir="ltr" class="book-kind-page book-type-docs">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input id="book-search-input" type="text" 
+    placeholder="Search"
+    aria-label="Search"
+    maxlength="64" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch02/02/" class="">
+      全屏Feed ScrollView嵌套时滑动问题</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/" class="">
+      自定义 LLVM PASS 实现 函数耗时插桩统计</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch01/01/" class="">
+      实现抖音评论列表效果</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/runtime/ch01/01/" class="">
+      Objective C 关联对象原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/wwdc22/ch01/01/" class="active">
+      运行时优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch02/02/" class="">
+      基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/ffmpeg/ch01/01/" class="">
+      iOS使用FFmepeg命令行工具源码实现转码功能</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/swift/ch01/01/" class="">
+      Swift Substring</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/trace/" class="">
+      Trace</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/seatcanvas%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%A7%A3%E6%9E%90/" class="">
+      Seat Canvas技术架构解析</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>运行时优化</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h4 id="message-send-优化">Message Send 优化<a class="anchor" href="#message-send-%e4%bc%98%e5%8c%96">#</a></h4>
+<ul>
+<li>在<code>Objective-C</code>中的方法调用,最终都将转为<code>objc_msgSend</code>调用</li>
+<li>根据其<code>objc_msgSend</code>调用约定其中第一个参数为<code>receiver</code>, 第二个参数为<code>selector</code>
+<img src="./01.png" alt="" /></li>
+<li>如上图所示, 每次调用少不了<code>selector</code>准备, 优化之后
+<img src="./02.png" alt="" />
+<img src="./03.png" alt="" /></li>
+<li>如上图所示,创建了<code>selector</code>对应的<code>stub</code>,将<code>selector</code>参数准备放到了<code>stub</code>中,这样一来<code>stub</code>就可以复用,同时也就少了很多获取<code>selector</code>的 <code>adrp</code> <code>ldr</code>指令,另一方面也就减小了可执行文件大小</li>
+<li>同时这种优化有两种优化模式,如下图所示.
+<img src="./04.png" alt="" /></li>
+</ul>
+<h4 id="retain-and-release">Retain and release<a class="anchor" href="#retain-and-release">#</a></h4>
+<ul>
+<li>在<code>ARC</code>中由编译器插入对应的内存处理代码,从而避免手动管理内存
+<img src="./05.png" alt="" /></li>
+<li>在调用<code>objc_retain</code> <code>objc_release</code>前都需要准备<code>x0</code>寄存器.而优化的方式则是通过将参数准备调整为一系列<code>objc_retain_xx</code> <code>objc_release_xx</code>调用,
+比如<code>datComponents</code>这个变量从分配到释放一直保持在<code>x20</code>寄存器中,那么在释放时则直接通过 <code>bl _objc_release_x20</code>,也就少了<code>mov x0, x20</code>这条指令,这种优化同样也减小了可执行文件大小
+<img src="./06.png" alt="" />
+<img src="./07.png" alt="" />
+<img src="./08.png" alt="" /></li>
+<li><a href="https://developer.apple.com/videos/play/wwdc2022/110363/">原session Improve app size and runtime performance</a></li>
+</ul>
+</article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+<div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/docs/ios/runtime/ch01/01/" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Backward" />
+        <span>Objective C 关联对象原理</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/docs/llvm/ch02/02/" class="flex align-center">
+        <span>基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Forward" />
+      </a>
+    
+    </span>
+  </div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+  
+ 
+        
+  
+    <script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script>
+  
+
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+  
+  <aside class="book-toc">
+    <div class="book-toc-content">
+      
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+    </div>
+  </aside>
+  
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

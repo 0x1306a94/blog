@@ -1,0 +1,15 @@
+{
+  "name": "0x1306a94.com",
+  "short_name": "0x1306a94.com",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512"
+    }
+  ]
+}

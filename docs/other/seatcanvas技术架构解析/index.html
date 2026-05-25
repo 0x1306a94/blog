@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="zh-CN" dir="ltr">
+<head>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="SeatCanvas：跨平台高性能座位图渲染引擎架构解析# 1. 引言# SeatCanvas 是一个面向 iOS、Android 和 HarmonyOS（OHOS）的跨平台座位图渲染库，核心 C&#43;&#43; 代码约 180&#43; 源文件，三端共享同一套渲染核心。它基于 tgfx 图形库（类 Skia 的 2D 渲染引擎），解决了大型场馆座位图在移动设备上的核心难题：如何在有限的 GPU 资源下，以 60fps（高刷设备可达 120fps，如 iPad Pro、Mate 60 系列）流畅渲染上万个可交互的座位元素，同时支持手势驱动的缩放、平移和弹性动画。
+本文面向有图形/渲染背景的工程师，从渲染管线、手势系统、纹理图集、跨平台抽象和性能优化五个维度，深入剖析 SeatCanvas 的架构设计。文中所有代码路径均为项目实际文件路径，可直接在仓库中查阅对应源码。
+2. 整体架构# SeatCanvas 采用经典的分层架构，自底向上分为图形抽象层、渲染核心层和平台接入层：
+┌────────────────────────────────────────────────────────────┐ │ iOS(Swift/Metal) │ Android(Kotlin/GLES) │ OHOS(ArkTS/GLES) │ ├────────────────────────────────────────────────────────────┤ │ Swift Bridge / JNI / NAPI │ ├────────────────────────────────────────────────────────────┤ │ SeatCanvasCoreRenderer │ │ ┌──────────────┬──────────────┬──────────────────────┐ │ │ │ Viewport │RenderPasses │ Style &amp; Atlas Manager│ │ │ │ Controller │(BaseMap/Seat)│ │ │ │ ├──────────────┼──────────────┼──────────────────────┤ │ │ │ Gesture │ Data Manager │ Layer &amp; Drawer │ │ │ │ Controller │ │ System │ │ │ └──────────────┴──────────────┴──────────────────────┘ │ ├────────────────────────────────────────────────────────────┤ │ tgfx (Graphics Library) │ ├────────────────────────────────────────────────────────────┤ │ Metal (iOS) │ OpenGL ES (Android/OHOS) │ └────────────────────────────────────────────────────────────┘2.1 核心类：SeatCanvasCoreRenderer# SeatCanvasCoreRenderer（src/SeatCanvas/core/renderer/SeatCanvasCoreRenderer.{hpp,cpp}）是整个系统的调度中心。它持有以下内部组件：
+">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#2e3440">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="https://blog.0x1306a94.com/docs/other/seatcanvas%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%A7%A3%E6%9E%90/">
+  <meta property="og:site_name" content="0x1306a94.com">
+  <meta property="og:title" content="0x1306a94.com">
+  <meta property="og:description" content="SeatCanvas：跨平台高性能座位图渲染引擎架构解析# 1. 引言# SeatCanvas 是一个面向 iOS、Android 和 HarmonyOS（OHOS）的跨平台座位图渲染库，核心 C&#43;&#43; 代码约 180&#43; 源文件，三端共享同一套渲染核心。它基于 tgfx 图形库（类 Skia 的 2D 渲染引擎），解决了大型场馆座位图在移动设备上的核心难题：如何在有限的 GPU 资源下，以 60fps（高刷设备可达 120fps，如 iPad Pro、Mate 60 系列）流畅渲染上万个可交互的座位元素，同时支持手势驱动的缩放、平移和弹性动画。
+本文面向有图形/渲染背景的工程师，从渲染管线、手势系统、纹理图集、跨平台抽象和性能优化五个维度，深入剖析 SeatCanvas 的架构设计。文中所有代码路径均为项目实际文件路径，可直接在仓库中查阅对应源码。
+2. 整体架构# SeatCanvas 采用经典的分层架构，自底向上分为图形抽象层、渲染核心层和平台接入层：
+┌────────────────────────────────────────────────────────────┐ │ iOS(Swift/Metal) │ Android(Kotlin/GLES) │ OHOS(ArkTS/GLES) │ ├────────────────────────────────────────────────────────────┤ │ Swift Bridge / JNI / NAPI │ ├────────────────────────────────────────────────────────────┤ │ SeatCanvasCoreRenderer │ │ ┌──────────────┬──────────────┬──────────────────────┐ │ │ │ Viewport │RenderPasses │ Style &amp; Atlas Manager│ │ │ │ Controller │(BaseMap/Seat)│ │ │ │ ├──────────────┼──────────────┼──────────────────────┤ │ │ │ Gesture │ Data Manager │ Layer &amp; Drawer │ │ │ │ Controller │ │ System │ │ │ └──────────────┴──────────────┴──────────────────────┘ │ ├────────────────────────────────────────────────────────────┤ │ tgfx (Graphics Library) │ ├────────────────────────────────────────────────────────────┤ │ Metal (iOS) │ OpenGL ES (Android/OHOS) │ └────────────────────────────────────────────────────────────┘2.1 核心类：SeatCanvasCoreRenderer# SeatCanvasCoreRenderer（src/SeatCanvas/core/renderer/SeatCanvasCoreRenderer.{hpp,cpp}）是整个系统的调度中心。它持有以下内部组件：">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="docs">
+
+
+  <meta itemprop="name" content="0x1306a94.com">
+  <meta itemprop="description" content="SeatCanvas：跨平台高性能座位图渲染引擎架构解析# 1. 引言# SeatCanvas 是一个面向 iOS、Android 和 HarmonyOS（OHOS）的跨平台座位图渲染库，核心 C&#43;&#43; 代码约 180&#43; 源文件，三端共享同一套渲染核心。它基于 tgfx 图形库（类 Skia 的 2D 渲染引擎），解决了大型场馆座位图在移动设备上的核心难题：如何在有限的 GPU 资源下，以 60fps（高刷设备可达 120fps，如 iPad Pro、Mate 60 系列）流畅渲染上万个可交互的座位元素，同时支持手势驱动的缩放、平移和弹性动画。
+本文面向有图形/渲染背景的工程师，从渲染管线、手势系统、纹理图集、跨平台抽象和性能优化五个维度，深入剖析 SeatCanvas 的架构设计。文中所有代码路径均为项目实际文件路径，可直接在仓库中查阅对应源码。
+2. 整体架构# SeatCanvas 采用经典的分层架构，自底向上分为图形抽象层、渲染核心层和平台接入层：
+┌────────────────────────────────────────────────────────────┐ │ iOS(Swift/Metal) │ Android(Kotlin/GLES) │ OHOS(ArkTS/GLES) │ ├────────────────────────────────────────────────────────────┤ │ Swift Bridge / JNI / NAPI │ ├────────────────────────────────────────────────────────────┤ │ SeatCanvasCoreRenderer │ │ ┌──────────────┬──────────────┬──────────────────────┐ │ │ │ Viewport │RenderPasses │ Style &amp; Atlas Manager│ │ │ │ Controller │(BaseMap/Seat)│ │ │ │ ├──────────────┼──────────────┼──────────────────────┤ │ │ │ Gesture │ Data Manager │ Layer &amp; Drawer │ │ │ │ Controller │ │ System │ │ │ └──────────────┴──────────────┴──────────────────────┘ │ ├────────────────────────────────────────────────────────────┤ │ tgfx (Graphics Library) │ ├────────────────────────────────────────────────────────────┤ │ Metal (iOS) │ OpenGL ES (Android/OHOS) │ └────────────────────────────────────────────────────────────┘2.1 核心类：SeatCanvasCoreRenderer# SeatCanvasCoreRenderer（src/SeatCanvas/core/renderer/SeatCanvasCoreRenderer.{hpp,cpp}）是整个系统的调度中心。它持有以下内部组件：">
+  <meta itemprop="wordCount" content="1916">
+
+<title>Seat Canvas技术架构解析 • 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="https://blog.0x1306a94.com/docs/other/seatcanvas%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%A7%A3%E6%9E%90/">
+<link rel="stylesheet" href="/book.min.7dca40f168e2fd532b7b1937df678e5fcb9289577e924bd85f799138b6137fa6.css" integrity="sha256-fcpA8Wji/VMrexk332eOX8uSiVd&#43;kkvYX3mROLYTf6Y=" crossorigin="anonymous">
+
+
+  <script defer type="module" src="/en.search.min.a065d1c80af7beaff68b7c9629c5e374db141794c9c1b23c68e6875349454e71.js" integrity="sha256-oGXRyAr3vq/2i3yWKcXjdNsUF5TJwbI8aOaHU0lFTnE=" crossorigin="anonymous"></script>
+
+  
+</head>
+<body dir="ltr" class="book-kind-page book-type-docs">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input id="book-search-input" type="text" 
+    placeholder="Search"
+    aria-label="Search"
+    maxlength="64" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch02/02/" class="">
+      全屏Feed ScrollView嵌套时滑动问题</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/" class="">
+      自定义 LLVM PASS 实现 函数耗时插桩统计</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch01/01/" class="">
+      实现抖音评论列表效果</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/runtime/ch01/01/" class="">
+      Objective C 关联对象原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/wwdc22/ch01/01/" class="">
+      运行时优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch02/02/" class="">
+      基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/ffmpeg/ch01/01/" class="">
+      iOS使用FFmepeg命令行工具源码实现转码功能</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/swift/ch01/01/" class="">
+      Swift Substring</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/trace/" class="">
+      Trace</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/seatcanvas%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%A7%A3%E6%9E%90/" class="active">
+      Seat Canvas技术架构解析</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Seat Canvas技术架构解析</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#seatcanvas跨平台高性能座位图渲染引擎架构解析">SeatCanvas：跨平台高性能座位图渲染引擎架构解析</a>
+      <ul>
+        <li><a href="#1-引言">1. 引言</a></li>
+        <li><a href="#2-整体架构">2. 整体架构</a>
+          <ul>
+            <li><a href="#21-核心类seatcanvascorerenderer">2.1 核心类：SeatCanvasCoreRenderer</a></li>
+            <li><a href="#22-delegate-模式">2.2 Delegate 模式</a></li>
+            <li><a href="#23-典型加载流程">2.3 典型加载流程</a></li>
+          </ul>
+        </li>
+        <li><a href="#3-渲染管线">3. 渲染管线</a>
+          <ul>
+            <li><a href="#31-绘制流程">3.1 绘制流程</a></li>
+            <li><a href="#32-custombasemappass底图渲染">3.2 CustomBaseMapPass：底图渲染</a></li>
+            <li><a href="#33-customseatpass实例化座位渲染">3.3 CustomSeatPass：实例化座位渲染</a></li>
+            <li><a href="#34-覆盖图层overlay--minimap">3.4 覆盖图层（Overlay &amp; Minimap）</a></li>
+          </ul>
+        </li>
+        <li><a href="#4-手势系统">4. 手势系统</a>
+          <ul>
+            <li><a href="#41-整体架构">4.1 整体架构</a></li>
+            <li><a href="#42-弹性边界">4.2 弹性边界</a></li>
+            <li><a href="#43-惯性滑动与回弹">4.3 惯性滑动与回弹</a></li>
+            <li><a href="#44-缩放处理">4.4 缩放处理</a></li>
+            <li><a href="#45-displaylink-驱动">4.5 DisplayLink 驱动</a></li>
+            <li><a href="#46-手势状态机">4.6 手势状态机</a></li>
+          </ul>
+        </li>
+        <li><a href="#5-纹理图集系统">5. 纹理图集系统</a>
+          <ul>
+            <li><a href="#51-seatstyleatlasmanager">5.1 SeatStyleAtlasManager</a></li>
+            <li><a href="#52-seatstylerenderer">5.2 SeatStyleRenderer</a></li>
+            <li><a href="#53-图集到-shader-的数据流">5.3 图集到 Shader 的数据流</a></li>
+          </ul>
+        </li>
+        <li><a href="#6-坐标系统与-viewport-管理">6. 坐标系统与 Viewport 管理</a>
+          <ul>
+            <li><a href="#61-三层坐标空间">6.1 三层坐标空间</a></li>
+            <li><a href="#62-viewportcontroller">6.2 ViewportController</a></li>
+            <li><a href="#63-seat-可见性控制">6.3 Seat 可见性控制</a></li>
+          </ul>
+        </li>
+        <li><a href="#7-座位数据管理">7. 座位数据管理</a>
+          <ul>
+            <li><a href="#71-seatdatamanager">7.1 SeatDataManager</a></li>
+            <li><a href="#72-样式键匹配机制">7.2 样式键匹配机制</a></li>
+          </ul>
+        </li>
+        <li><a href="#8-跨平台设计">8. 跨平台设计</a>
+          <ul>
+            <li><a href="#81-平台抽象层">8.1 平台抽象层</a></li>
+            <li><a href="#82-三端桥接方式">8.2 三端桥接方式</a></li>
+            <li><a href="#83-swift-端示例">8.3 Swift 端示例</a></li>
+          </ul>
+        </li>
+        <li><a href="#9-性能优化策略">9. 性能优化策略</a>
+          <ul>
+            <li><a href="#91-实例化渲染">9.1 实例化渲染</a></li>
+            <li><a href="#92-纹理图集">9.2 纹理图集</a></li>
+            <li><a href="#93-按需加载">9.3 按需加载</a></li>
+            <li><a href="#94-单-vbo-设计">9.4 单 VBO 设计</a></li>
+            <li><a href="#95-惰性图集重建">9.5 惰性图集重建</a></li>
+            <li><a href="#96-displaylist-脏区域追踪">9.6 DisplayList 脏区域追踪</a></li>
+            <li><a href="#97-displaylink-按需启停">9.7 DisplayLink 按需启停</a></li>
+          </ul>
+        </li>
+        <li><a href="#10-总结">10. 总结</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="seatcanvas跨平台高性能座位图渲染引擎架构解析">SeatCanvas：跨平台高性能座位图渲染引擎架构解析<a class="anchor" href="#seatcanvas%e8%b7%a8%e5%b9%b3%e5%8f%b0%e9%ab%98%e6%80%a7%e8%83%bd%e5%ba%a7%e4%bd%8d%e5%9b%be%e6%b8%b2%e6%9f%93%e5%bc%95%e6%93%8e%e6%9e%b6%e6%9e%84%e8%a7%a3%e6%9e%90">#</a></h1>
+<h2 id="1-引言">1. 引言<a class="anchor" href="#1-%e5%bc%95%e8%a8%80">#</a></h2>
+<p>SeatCanvas 是一个面向 iOS、Android 和 HarmonyOS（OHOS）的跨平台座位图渲染库，核心 C++ 代码约 180+ 源文件，三端共享同一套渲染核心。它基于 tgfx 图形库（类 Skia 的 2D 渲染引擎），解决了大型场馆座位图在移动设备上的核心难题：如何在有限的 GPU 资源下，以 60fps（高刷设备可达 120fps，如 iPad Pro、Mate 60 系列）流畅渲染上万个可交互的座位元素，同时支持手势驱动的缩放、平移和弹性动画。</p>
+<p>本文面向有图形/渲染背景的工程师，从渲染管线、手势系统、纹理图集、跨平台抽象和性能优化五个维度，深入剖析 SeatCanvas 的架构设计。文中所有代码路径均为项目实际文件路径，可直接在仓库中查阅对应源码。</p>
+<h2 id="2-整体架构">2. 整体架构<a class="anchor" href="#2-%e6%95%b4%e4%bd%93%e6%9e%b6%e6%9e%84">#</a></h2>
+<p>SeatCanvas 采用经典的分层架构，自底向上分为<strong>图形抽象层</strong>、<strong>渲染核心层</strong>和<strong>平台接入层</strong>：</p>
+<pre tabindex="0"><code>┌────────────────────────────────────────────────────────────┐
+│ iOS(Swift/Metal) │ Android(Kotlin/GLES) │ OHOS(ArkTS/GLES) │
+├────────────────────────────────────────────────────────────┤
+│                  Swift Bridge / JNI / NAPI                 │
+├────────────────────────────────────────────────────────────┤
+│                  SeatCanvasCoreRenderer                    │
+│   ┌──────────────┬──────────────┬──────────────────────┐   │
+│   │  Viewport    │RenderPasses  │ Style &amp; Atlas Manager│   │
+│   │  Controller  │(BaseMap/Seat)│                      │   │
+│   ├──────────────┼──────────────┼──────────────────────┤   │
+│   │  Gesture     │ Data Manager │   Layer &amp; Drawer     │   │
+│   │  Controller  │              │   System             │   │
+│   └──────────────┴──────────────┴──────────────────────┘   │
+├────────────────────────────────────────────────────────────┤
+│                    tgfx (Graphics Library)                 │
+├────────────────────────────────────────────────────────────┤
+│        Metal (iOS)      │      OpenGL ES (Android/OHOS)    │
+└────────────────────────────────────────────────────────────┘</code></pre><h3 id="21-核心类seatcanvascorerenderer">2.1 核心类：SeatCanvasCoreRenderer<a class="anchor" href="#21-%e6%a0%b8%e5%bf%83%e7%b1%bbseatcanvascorerenderer">#</a></h3>
+<p><code>SeatCanvasCoreRenderer</code>（<code>src/SeatCanvas/core/renderer/SeatCanvasCoreRenderer.{hpp,cpp}</code>）是整个系统的调度中心。它持有以下内部组件：</p>
+<table>
+  <thead>
+      <tr>
+          <th>组件</th>
+          <th>类名</th>
+          <th>职责</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>视口控制器</td>
+          <td><code>ViewportController</code></td>
+          <td>管理缩放/偏移状态、动画、坐标转换</td>
+      </tr>
+      <tr>
+          <td>底图渲染通道</td>
+          <td><code>CustomBaseMapPass</code></td>
+          <td>GPU 渲染 SVG 底图区域网格</td>
+      </tr>
+      <tr>
+          <td>座位渲染通道</td>
+          <td><code>CustomSeatPass</code></td>
+          <td>GPU 实例化渲染座位</td>
+      </tr>
+      <tr>
+          <td>纹理图集管理器</td>
+          <td><code>SeatStyleAtlasManager</code></td>
+          <td>动态生成座位样式纹理图集</td>
+      </tr>
+      <tr>
+          <td>座位数据管理器</td>
+          <td><code>SeatDataManager</code></td>
+          <td>座位实例数据的增删改查与选取</td>
+      </tr>
+      <tr>
+          <td>手势控制器</td>
+          <td><code>ElasticZoomPanController</code></td>
+          <td>弹性缩放/平移 + 惯性动画</td>
+      </tr>
+      <tr>
+          <td>底图网格构建器</td>
+          <td><code>BaseMapMeshBuilder</code></td>
+          <td>管理三角化后的区域顶点数据</td>
+      </tr>
+      <tr>
+          <td>覆盖图层</td>
+          <td><code>SeatOverlayLayerTree</code></td>
+          <td>小地图、返回按钮等 UI 叠加层</td>
+      </tr>
+      <tr>
+          <td>区域名称图层</td>
+          <td><code>SeatZoneNameLayerTree</code></td>
+          <td>区域标签文本</td>
+      </tr>
+      <tr>
+          <td>动画系统</td>
+          <td><code>Animator</code></td>
+          <td>动画生命周期管理、插值器</td>
+      </tr>
+  </tbody>
+</table>
+<h3 id="22-delegate-模式">2.2 Delegate 模式<a class="anchor" href="#22-delegate-%e6%a8%a1%e5%bc%8f">#</a></h3>
+<p>SeatCanvasCoreRenderer 通过 <code>SeatCanvasCoreRendererDelegate</code> 接口（<code>src/SeatCanvas/core/renderer/SeatCanvasCoreRendererDelegate.hpp:18</code>）与平台层通信：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SeatCanvasCoreRendererDelegate</span> {
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 底图生命周期
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> didLoadBaseMap(<span style="color:#66d9ef">uint32_t</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">didUnloadBaseMap</span>(<span style="color:#66d9ef">uint32_t</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">didUpdateZoomLevelConfig</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasZoomLevelConfigEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 交互回调
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">didTapZone</span>(<span style="color:#66d9ef">uint32_t</span> coreID, <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string <span style="color:#f92672">&amp;</span>zoneId) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">didTapSeat</span>(<span style="color:#66d9ef">uint32_t</span> coreID, <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string <span style="color:#f92672">&amp;</span>zoneId, <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string <span style="color:#f92672">&amp;</span>seatId) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 视口事件（7个）
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportWillBeginDragging</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidScroll</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidEndDragging</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>, <span style="color:#66d9ef">bool</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidEndDecelerating</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportWillBeginZooming</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidZoom</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidEndZooming</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">viewportDidEndScrollingAnimation</span>(<span style="color:#66d9ef">uint32_t</span>, <span style="color:#66d9ef">const</span> SeatCanvasViewportEvent <span style="color:#f92672">&amp;</span>) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p><strong>关键约束</strong>：<code>setDelegate()</code> 必须在 <code>loadBaseMap()</code> 之前调用。底图生命周期回调（<code>didLoadBaseMap</code>、<code>didUnloadBaseMap</code>、<code>didUpdateZoomLevelConfig</code>）在 <code>handleBaseMapChanged()</code> 中同步触发，不会因 delegate 后来设置而&quot;重放&quot;已发生的事件。Tap 和 Viewport 回调则由对应的事件处理方法按需分发。</p>
+<h3 id="23-典型加载流程">2.3 典型加载流程<a class="anchor" href="#23-%e5%85%b8%e5%9e%8b%e5%8a%a0%e8%bd%bd%e6%b5%81%e7%a8%8b">#</a></h3>
+<pre tabindex="0"><code>setDelegate()
+  → loadBaseMap() / setBaseMapConfig()
+    → didLoadBaseMap:
+        registerPricecodes()
+        → applySeatStyleJSONConfig() / setStyleKeyToConfigFromJSON()
+        → per zone: setSeatData()
+        → updateSeatStatusesForZone()
+        → setSelectedSeatIds()
+    → didUpdateZoomLevelConfig:
+        seatRenderZoomThreshold = zoomLevels.venue
+    → didUnloadBaseMap: 停止轮询，清理缓存状态</code></pre><h2 id="3-渲染管线">3. 渲染管线<a class="anchor" href="#3-%e6%b8%b2%e6%9f%93%e7%ae%a1%e7%ba%bf">#</a></h2>
+<h3 id="31-绘制流程">3.1 绘制流程<a class="anchor" href="#31-%e7%bb%98%e5%88%b6%e6%b5%81%e7%a8%8b">#</a></h3>
+<p><code>SeatCanvasCoreRenderer::draw(bool force)</code> 的完整执行顺序如下（<code>SeatCanvasCoreRenderer.cpp:439</code>）：</p>
+<pre tabindex="0"><code>1. Prepare（数据准备阶段）
+   ├── _seatZoneNameLayer-&gt;prepare()
+   ├── _overlayLayer-&gt;prepare()
+   ├── 脏检查：无内容变化 &amp;&amp; !force &amp;&amp; !_invalidate → 跳过本帧
+   ├── _seatAtlasManager-&gt;update()     ← 按需重建图集
+   └── prepareSeatIfNeeded()          ← 收集可见座位实例数据
+
+2. canvas-&gt;clear(backgroundColor)
+
+3. executeCustomRenderPass（GPU Pass 阶段，两个 Pass 共用一个 CommandEncoder）
+   ├── CustomBaseMapPass::onDraw()  → 底图离屏纹理
+   └── CustomSeatPass::onDraw()     → 座位离屏纹理
+   └── encoder-&gt;finish() → queue-&gt;submit()
+
+4. Canvas 合成（由底向上逐层覆盖）
+   ├── canvas-&gt;drawImage(baseMapImage)      ← 第1层：底图
+   ├── _seatZoneNameLayer-&gt;draw()           ← 第2层：区域名称标签
+   ├── canvas-&gt;drawImage(seatImage)         ← 第3层：座位
+   ├── _overlayLayer-&gt;draw()                ← 第4层：小地图 + 半透明返回层
+   └── drawDebugHUD()                       ← 第5层：调试信息
+
+5. context-&gt;flush() → context-&gt;submit() → 呈现到屏幕</code></pre><p>关键设计点：</p>
+<ul>
+<li>两个 RenderPass <strong>共享一个 CommandEncoder</strong>，在一次 <code>executeCustomRenderPass</code> 中依次执行后统一 submit</li>
+<li>座位（第3层）绘制在区域名称（第2层）之上，小地图（第4层）在最顶层</li>
+<li>在 Pass 阶段之前有<strong>脏检查优化</strong>：如果 zone name 和 overlay 的 DisplayList 都没有内容变化，且没有 <code>force</code> 或 <code>invalidate</code> 标记，则跳过整帧</li>
+<li>座位实例数据在 Pass 阶段之前的 <code>prepareSeatIfNeeded()</code> 中收集，确保 GPU 命令提交前数据已就绪</li>
+</ul>
+<p>两个 Pass 均继承自 <code>CustomRenderPass</code>（<code>src/SeatCanvas/core/renderer/pass/CustomRenderPass.hpp:25</code>），它定义了标准模板方法：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">CustomRenderPass</span> <span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> IContextAware {
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> <span style="color:#66d9ef">bool</span> onDraw(tgfx<span style="color:#f92672">::</span>CommandEncoder <span style="color:#f92672">*</span>encoder,
+</span></span><span style="display:flex;"><span>                        <span style="color:#66d9ef">const</span> SeatCanvasCoreRendererState <span style="color:#f92672">*</span>state) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>Image<span style="color:#f92672">&gt;</span> outputImage() <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">protected</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 子类必须实现
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>string onBuildVertexShader() <span style="color:#66d9ef">const</span> <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>string onBuildFragmentShader() <span style="color:#66d9ef">const</span> <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 子类可覆写
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>VertexBufferLayout<span style="color:#f92672">&gt;</span> vertexBufferLayouts() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>BindingEntry<span style="color:#f92672">&gt;</span> uniformBlocks() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>BindingEntry<span style="color:#f92672">&gt;</span> textureSamplers() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> tgfx<span style="color:#f92672">::</span>MultisampleDescriptor multisample() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>PipelineColorAttachment<span style="color:#f92672">&gt;</span> colorAttachments() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 管线创建（基类实现）
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>RenderPipeline<span style="color:#f92672">&gt;</span> createPipeline(tgfx<span style="color:#f92672">::</span>GPU <span style="color:#f92672">*</span>gpu) <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p>这种模板方法模式意味着：每个子类只需提供 Shader 源码和 Buffer Layout，而管线创建、版本前缀注入（自动检测 OpenGL ES vs Desktop GL 并插入 <code>#version 300 es</code> 或 <code>#version 150</code>）、Shader 编译和错误处理全部由基类 <code>CreatePipeline</code> 统一完成（<code>CustomRenderPass.cpp:16-51</code>）。</p>
+<h3 id="32-custombasemappass底图渲染">3.2 CustomBaseMapPass：底图渲染<a class="anchor" href="#32-custombasemappass%e5%ba%95%e5%9b%be%e6%b8%b2%e6%9f%93">#</a></h3>
+<p>底图渲染的核心任务是将 SVG 解析产出的三角化区域网格渲染到纹理。</p>
+<p><strong>网格构建器</strong>（<code>BaseMapMeshBuilder</code>, <code>src/SeatCanvas/core/renderer/BaseMapMeshBuilder.hpp:36</code>）：</p>
+<p>所有区域的顶点<strong>按顺序追加到单个 VBO</strong> 中，每个区域占据一段连续范围。这是一个关键的不变量设计：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">BaseMapMeshBuilder</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">ZoneDrawRange</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">uint32_t</span> vertexOffset <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">uint32_t</span> vertexCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    };
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>ZoneMeshInfo<span style="color:#f92672">&gt;&gt;</span> zoneMeshInfos;
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>ZoneDrawRange<span style="color:#f92672">&gt;</span> drawRanges;
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>ZoneMeshInfo<span style="color:#f92672">&gt;&gt;</span> zoneIdToMeshInfo;
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, size_t<span style="color:#f92672">&gt;</span> zoneIdToIndex;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">uint32_t</span> totalVertexCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p>它还提供空间查询能力——<code>findZoneIntersectingRect</code>（包围盒相交查询）和 <code>findZoneContainingPoint</code>（命中测试），用于可见性裁剪和点击检测。</p>
+<p><strong>顶点结构</strong>（<code>BaseMapZoneVertex.hpp</code>）包含四个属性：</p>
+<ul>
+<li><code>x, y</code>：2D 位置（底图原始坐标空间）</li>
+<li><code>coverage</code>：AA 覆盖率（用于边缘抗锯齿）</li>
+<li><code>colorIndex</code>：int32 类型，用于颜色纹理查表</li>
+</ul>
+<p><strong>Fragment Shader 的颜色查找</strong>：底图的每个区域可以有&quot;原始色&quot;（Original）和&quot;交替色&quot;（Alternate）两种状态。Fragment Shader 将 <code>colorIndex</code> 按纹理宽度拆分为行/列坐标（<code>row = index / width, col = index % width</code>），通过 <code>texelFetch</code> 从一张 2D 颜色纹理中进行点采样获取实际颜色，再乘以 <code>vCoverage</code> 实现边缘抗锯齿。这种设计使得区域颜色切换（如点击高亮）无需重建网格——只需更新颜色纹理即可。</p>
+<p><strong>CustomBaseMapPass::onDraw 执行流程</strong>（<code>src/SeatCanvas/core/renderer/pass/CustomBaseMapPass.cpp:111</code>）：</p>
+<ol>
+<li><strong>CPU 可见性裁剪</strong>：<code>getVisibleZoneMesheIndices(state)</code> 根据 MVP 矩阵对每个区域做包围盒-视口相交测试，筛选可见区域的索引列表</li>
+<li><strong>MSAA（可选）</strong>：如果启用多重采样，创建 MSAA 纹理作为中间颜色附件</li>
+<li><strong>准备 GPU 资源</strong>：</li>
+</ol>
+<ul>
+<li>创建 RenderTexture（与视口同尺寸）</li>
+<li>创建/获取 FillPipeline</li>
+<li>更新 FillVBO（将全量区域顶点写入单个缓冲区）</li>
+<li>更新 UBO（MVP 矩阵 + 颜色纹理尺寸）</li>
+<li>更新颜色纹理</li>
+</ul>
+<ol start="4">
+<li><strong>绘制</strong>：<code>renderFill()</code> 遍历可见区域索引，将连续的区域段合并为一次 <code>draw(Triangles, vertexCount, 1, vertexOffset)</code>，通过顶点偏移量直接从全量 VBO 中读取对应区域数据，减少 draw call 次数</li>
+<li><strong>输出</strong>：<code>outputImage()</code> 返回渲染完成的底图纹理</li>
+</ol>
+<h3 id="33-customseatpass实例化座位渲染">3.3 CustomSeatPass：实例化座位渲染<a class="anchor" href="#33-customseatpass%e5%ae%9e%e4%be%8b%e5%8c%96%e5%ba%a7%e4%bd%8d%e6%b8%b2%e6%9f%93">#</a></h3>
+<p>座位渲染是 SeatCanvas 的性能关键路径——一场馆可能包含上万个座位，逐个 Draw Call 不可行。<code>CustomSeatPass</code> 采用 <strong>GPU 实例化渲染（Instanced Rendering）</strong> 来解决这个问题。</p>
+<p><strong>设计思路</strong>：</p>
+<ul>
+<li>一个座位的基本几何体是固定的 Quad（两个三角形组成矩形），作为顶点缓冲区 slot 0（<code>baseQuadVBO</code>）</li>
+<li>每个座位的差异化数据（位置偏移、旋转、UV 索引）存储在实例缓冲区 slot 1（<code>instanceBuffer</code>）中</li>
+<li>一次 <code>draw(TriangleStrip, 4, seatCount)</code> 调用即可渲染所有座位</li>
+</ul>
+<p><strong>实例数据结构</strong>（<code>SeatInstanceData</code>, <code>src/SeatCanvas/core/renderer/SeatInstanceData.hpp</code>）：</p>
+<p>每个座位实例携带：位置偏移（<code>positionOffset</code>）、旋转角度（<code>rotation</code>）、和纹理坐标索引（<code>textureCoordIndex</code>）——后者用于从图集中选取正确的样式。</p>
+<p><strong>CustomSeatPass 的顶点属性布局</strong>（<code>src/SeatCanvas/core/renderer/pass/CustomSeatPass.hpp:78</code>）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#75715e">// Slot 0: 基础几何顶点属性（per-vertex）
+</span></span></span><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Attribute position;          <span style="color:#75715e">// Quad 的本地坐标
+</span></span></span><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Attribute textureCoord;      <span style="color:#75715e">// Quad 的本地 UV
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// Slot 1: 实例属性（per-instance）
+</span></span></span><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Attribute positionOffset;    <span style="color:#75715e">// 世界空间位置偏移
+</span></span></span><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Attribute rotation;          <span style="color:#75715e">// 旋转角度
+</span></span></span><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Attribute textureCoordIndex; <span style="color:#75715e">// UV 图集索引（用于从纹理数组中选取对应样式）
+</span></span></span></code></pre></div><p><strong>Vertex Shader 的核心逻辑</strong>：</p>
+<ol>
+<li>从实例缓冲区读取 <code>positionOffset</code>、<code>rotation</code>、<code>textureCoordIndex</code></li>
+<li>通过 <code>textureCoordIndex</code> 从 UBO 中的 UV 数组查表，获得该座位样式在图集中的实际 UV 范围</li>
+<li>将 Quad 顶点的本地 UV 重新映射到图集 UV</li>
+<li>应用旋转矩阵和位置偏移</li>
+<li>通过 MVP 矩阵变换到裁剪空间</li>
+</ol>
+<p><strong>UBO 结构</strong>（<code>layout(std140)</code>）：<code>uMVP</code>（mat3）、<code>uSeatHalfSize</code>（vec2，座位半尺寸，用于将 Quad 顶点平移到几何中心后做旋转）、<code>uTextureCoordRects</code>（vec4 动态数组，每个样式存 uMin/vMin/uMax/vMax）。</p>
+<p><strong>CustomSeatPass::onDraw 执行流程</strong>（<code>src/SeatCanvas/core/renderer/pass/CustomSeatPass.cpp:124</code>）：</p>
+<ol>
+<li>检查前置条件（encoder、图集纹理、座位数据非空）</li>
+<li>准备 GPU 资源：</li>
+</ol>
+<ul>
+<li>RenderTexture（与视口同尺寸）</li>
+<li>Pipeline + Sampler</li>
+<li>BaseQuadVBO（4 个顶点，TriangleStrip 布局）</li>
+<li>InstanceBuffer（动态更新，映射写入）</li>
+<li>UBO</li>
+</ul>
+<ol start="3">
+<li>开始 RenderPass → 设置 Viewport、Pipeline、纹理、UBO、两个顶点缓冲区</li>
+<li><strong>一次 Draw Call</strong>：<code>renderPass-&gt;draw(TriangleStrip, 4, seats.size())</code></li>
+<li>结束 RenderPass</li>
+</ol>
+<p>通过实例化，上万个座位只需一个 Draw Call，大幅降低 CPU 端的命令提交开销。</p>
+<h3 id="34-覆盖图层overlay--minimap">3.4 覆盖图层（Overlay &amp; Minimap）<a class="anchor" href="#34-%e8%a6%86%e7%9b%96%e5%9b%be%e5%b1%82overlay--minimap">#</a></h3>
+<p>除两个核心 RenderPass 外，<code>SeatCanvasCoreRenderer</code> 还管理两个 Drawer：</p>
+<ul>
+<li><strong>SeatOverlayLayerTree</strong>（<code>src/SeatCanvas/core/drawers/SeatOverlayLayerTree.hpp:34</code>）：绘制小地图（minimap）和半透明返回层（back layer），支持淡入淡出动画</li>
+<li><strong>SeatZoneNameLayerTree</strong>（<code>src/SeatCanvas/core/drawers/SeatZoneNameLayerTree.hpp</code>）：绘制区域名称标签</li>
+</ul>
+<p>两者均继承自 <code>Drawer</code> 抽象类（<code>src/SeatCanvas/core/drawers/Drawer.hpp:22</code>），遵循 <code>prepare() → draw()</code> 的两阶段模式。<code>SeatOverlayLayerTree</code> 内部使用 <code>tgfx::DisplayList</code> 的 <code>RenderMode::Direct</code> 模式进行图层管理和脏区域追踪。</p>
+<h2 id="4-手势系统">4. 手势系统<a class="anchor" href="#4-%e6%89%8b%e5%8a%bf%e7%b3%bb%e7%bb%9f">#</a></h2>
+<p>手势系统是 SeatCanvas 交互体验的核心，由 <code>ElasticZoomPanController</code>（<code>src/SeatCanvas/core/gesture/ElasticZoomPanController.{hpp,cpp}</code>，约 159 行头文件）统一管理。</p>
+<h3 id="41-整体架构">4.1 整体架构<a class="anchor" href="#41-%e6%95%b4%e4%bd%93%e6%9e%b6%e6%9e%84">#</a></h3>
+<pre tabindex="0"><code>平台手势事件
+  ↓
+handlePan(state, translation, timestampMs)
+handlePinch(state, scale, center)
+  ↓
+ElasticZoomPanController
+  ├── PanProxy: 手势代理，追踪 Pan 状态、位移和速度（内置 VelocityTracker）
+  ├── VelocityTracker: 速度追踪（用于计算惯性滑动初速度）
+  ├── Scroller: 衰减曲线（惯性滑动）
+  ├── SpringBack: 弹性回弹（临界阻尼弹簧模型）
+  └── ScrollProperties: 每个轴的动画状态（X / Y / Zoom）</code></pre><h3 id="42-弹性边界">4.2 弹性边界<a class="anchor" href="#42-%e5%bc%b9%e6%80%a7%e8%be%b9%e7%95%8c">#</a></h3>
+<p><code>ElasticZoomPanController</code> 的核心行为是弹性边界——当用户拖动超出内容边界时，内容会跟随手指但带有 rubber-band 阻尼；松手后以临界阻尼弹簧动画回弹到合法范围。</p>
+<p>边界约束通过 <code>contentInset</code>（<code>EdgeInsets</code>, 默认 40px 四边）扩展，提供合理的 overscroll 空间。<code>rubberBandForOffset</code> 方法实现非线性阻尼（<code>ElasticZoomPanController.cpp:445</code>）：</p>
+<ol>
+<li>若 offset 在 [minOffset, maxOffset] 范围内 → 直接返回，不做处理</li>
+<li>否则取最近的边界值作为 target，计算超出距离 <code>distance = |offset - target|</code></li>
+<li>使用 <code>CalculateRubberBandOffset</code> 计算阻尼后的距离：</li>
+</ol>
+<pre tabindex="0"><code>damped = (1 - 1 / (distance / range * 0.55 + 1)) * range</code></pre><ol start="4">
+<li>返回 <code>target + damped * sign(offset - target)</code></li>
+</ol>
+<p>其中 <code>RubberBandCoefficient = 0.55</code>（<code>GestureConstant.hpp:21</code>），<code>range</code> 为视口宽度或高度。这个公式确保小幅度超出时阻尼较弱（接近 1:1 跟随），大幅度超出时 damped 渐近趋近于 range，不会无限漂移。</p>
+<h3 id="43-惯性滑动与回弹">4.3 惯性滑动与回弹<a class="anchor" href="#43-%e6%83%af%e6%80%a7%e6%bb%91%e5%8a%a8%e4%b8%8e%e5%9b%9e%e5%bc%b9">#</a></h3>
+<p>手势结束时，<code>VelocityTracker</code> 计算出手指离开屏幕时的即时速度。速度和剩余距离通过 <code>Scroller</code> 产生衰减曲线，或通过 <code>SpringBack</code> 产生回弹曲线。</p>
+<p><code>SpringBack</code> 使用<strong>临界阻尼弹簧模型</strong>：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SpringBack</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">absorb</span>(<span style="color:#66d9ef">float</span> velocity, <span style="color:#66d9ef">float</span> distance);              <span style="color:#75715e">// 初始化：吸收初速度和距离
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">absorbWithResponse</span>(<span style="color:#66d9ef">float</span> velocity, <span style="color:#66d9ef">float</span> distance, <span style="color:#66d9ef">float</span> response); <span style="color:#75715e">// 可指定响应时间
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>optional<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span> value(<span style="color:#66d9ef">float</span> time) <span style="color:#66d9ef">const</span>;             <span style="color:#75715e">// 查询任意时刻的位移
+</span></span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p>数学上，临界阻尼弹簧的位移方程为：</p>
+<pre tabindex="0"><code>x(t) = (c₁ + c₂·t) · e^(-λt)</code></pre><p>其中 λ 由响应时间推导，c₁ 和 c₂ 由初始位移和初速度确定。临界阻尼保证以最快速度回到平衡位置且不产生振荡，这对移动端体验至关重要。</p>
+<h3 id="44-缩放处理">4.4 缩放处理<a class="anchor" href="#44-%e7%bc%a9%e6%94%be%e5%a4%84%e7%90%86">#</a></h3>
+<p>Pinch 手势的处理比 Pan 更复杂——缩放必须以手指中心（<code>center</code> 参数，在 viewport 坐标系中）为锚点，同时保持该锚点对应的内容点在缩放前后不变。</p>
+<p>关键实现是 <code>handlePinch</code>（<code>ElasticZoomPanController.cpp:132</code>）：</p>
+<ol>
+<li><strong>Began</strong>：记录起始缩放比例 <code>_pinchStartZoomScale = _zoomScale</code>，清除所有进行中的滚动/回弹动画</li>
+<li><strong>Changed</strong>：<code>logicalScale = _pinchStartZoomScale * scale</code>（无阻尼的理想缩放），再通过 <code>zoomScaleForRubberBandScale</code> 施加 rubber-band 得到视觉缩放比例；然后以手势中心为锚点，重新计算 <code>contentOffset</code> 使锚点对应的内容位置在缩放前后不变</li>
+<li><strong>Ended</strong>：将当前 zoom 钳制到 [minZoom, maxZoom] 范围；若超出边界则调用 <code>prepareBouncingForZoomScale</code> 以临界阻尼弹簧动画回弹到合法值</li>
+</ol>
+<h3 id="45-displaylink-驱动">4.5 DisplayLink 驱动<a class="anchor" href="#45-displaylink-%e9%a9%b1%e5%8a%a8">#</a></h3>
+<p><code>handleDisplayLinkFire()</code> 是每帧调用的动画推进方法（由平台层的 DisplayLink/CADisplayLink/ValueAnimator 触发）。它遍历三个动画轴（X 偏移、Y 偏移、Zoom 缩放），在每个轴上检查是否有未完成的惯性滑动或回弹动画，有则推进一帧并返回 <code>true</code>（需要继续刷新），无则返回 <code>false</code>（可以停止 DisplayLink 以省电）。</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">bool</span> ElasticZoomPanController<span style="color:#f92672">::</span>handleDisplayLinkFire() {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> needUpdate <span style="color:#f92672">=</span> false;
+</span></span><span style="display:flex;"><span>    needUpdate <span style="color:#f92672">|=</span> handleDisplayLinkFireForAxis(_scrollPropertiesX.get(), true);   <span style="color:#75715e">// X轴
+</span></span></span><span style="display:flex;"><span>    needUpdate <span style="color:#f92672">|=</span> handleDisplayLinkFireForAxis(_scrollPropertiesY.get(), false);  <span style="color:#75715e">// Y轴
+</span></span></span><span style="display:flex;"><span>    needUpdate <span style="color:#f92672">|=</span> handleDisplayLinkFireForZoomScale();                             <span style="color:#75715e">// 缩放
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> needUpdate;
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><h3 id="46-手势状态机">4.6 手势状态机<a class="anchor" href="#46-%e6%89%8b%e5%8a%bf%e7%8a%b6%e6%80%81%e6%9c%ba">#</a></h3>
+<p>手势识别通过 <code>GestureState</code> 枚举（<code>Began</code> → <code>Changed</code> → <code>Ended</code> / <code>Cancelled</code>）传达：</p>
+<ul>
+<li><strong>Began</strong>：记录初始状态，停止所有进行中的动画</li>
+<li><strong>Changed</strong>：实时更新缩放/偏移</li>
+<li><strong>Ended</strong>：计算速度，启动惯性滑动或弹性回弹</li>
+<li><strong>Cancelled</strong>：直接回弹到合法范围</li>
+</ul>
+<h2 id="5-纹理图集系统">5. 纹理图集系统<a class="anchor" href="#5-%e7%ba%b9%e7%90%86%e5%9b%be%e9%9b%86%e7%b3%bb%e7%bb%9f">#</a></h2>
+<p>SeatCanvas 的每个座位可以有独立的视觉样式（圆形颜色、SVG 图标等），为每个座位单独渲染一张纹理显然不现实。解决方案是<strong>纹理图集（Texture Atlas）</strong>。</p>
+<p>图集采用等宽网格布局，最多 10 列，行数按样式数量自动增长。每个格位在 GPU 上对应 <code>RGBA_8888</code> 纹理的一个矩形区域，通过归一化 UV 坐标寻址：</p>
+<pre tabindex="0"><code>    col=0          col=1          col=2        ...   col=9
+  ┌──────┐      ┌──────┐      ┌──────┐            ┌──────┐
+  │idx=0 │      │idx=1 │      │idx=2 │            │idx=9 │
+  │style │      │style │      │style │    ...     │style │
+  │  A   │      │  B   │      │  C   │            │  J   │
+  └──────┘      └──────┘      └──────┘            └──────┘
+  ┌──────┐      ┌──────┐      ┌──────┐            ┌──────┐
+  │idx=10│      │idx=11│      │idx=12│            │idx=19│
+  │style │      │style │      │style │    ...     │style │
+  │  K   │      │  L   │      │  M   │            │  T   │
+  └──────┘      └──────┘      └──────┘            └──────┘
+  ┌──────┐      ┌──────┐      ┌──────┐            ┌──────┐
+  │ idx= │      │ idx= │      │ idx= │            │ idx= │
+  │N*10  │      │ ...  │      │ ...  │    ...     │ ...  │
+  │      │      │      │      │      │            │      │
+  └──────┘      └──────┘      └──────┘            └──────┘</code></pre><p><strong>UV 坐标计算</strong>：格位 <code>(row, col)</code> 对应索引 <code>idx = row × 10 + col</code>，其归一化 UV 为：</p>
+<pre tabindex="0"><code>uvMin = (col × cellW / atlasW,  row × cellH / atlasH)
+uvMax = ((col+1) × cellW / atlasW,  (row+1) × cellH / atlasH)</code></pre><p><strong>扁平化 UV Offsets 数组</strong>：<code>[uMin₀, vMin₀, uMax₀, vMax₀,  uMin₁, vMin₁, uMax₁, vMax₁,  ...]</code>，每 4 个 float 对应一个样式。Shader 端通过实例属性 <code>textureCoordIndex</code> 索引这个数组，完成图集采样。</p>
+<h3 id="51-seatstyleatlasmanager">5.1 SeatStyleAtlasManager<a class="anchor" href="#51-seatstyleatlasmanager">#</a></h3>
+<p><code>SeatStyleAtlasManager</code>（<code>src/SeatCanvas/core/style/SeatStyleAtlasManager.hpp:33</code>）负责图集的生成和 UV 坐标管理：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SeatStyleAtlasManager</span> <span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> IContextAware {
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> update(<span style="color:#66d9ef">float</span> density, <span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Size <span style="color:#f92672">&amp;</span>seatSize);
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>tgfx<span style="color:#f92672">::</span>Texture<span style="color:#f92672">&gt;</span> getAtlasTexture() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">getUVCoords</span>(<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string <span style="color:#f92672">&amp;</span>styleId, tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>uvMin, tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>uvMax) <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int32_t</span> <span style="color:#a6e22e">getUVOffsetIndex</span>(<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>string <span style="color:#f92672">&amp;</span>styleId) <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span> <span style="color:#f92672">&amp;</span>getUVOffsets() <span style="color:#66d9ef">const</span>;  <span style="color:#75715e">// [uMin, vMin, uMax, vMax] * N
+</span></span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">setStyleIdToConfigs</span>(<span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>SeatStyleConfig<span style="color:#f92672">&gt;&gt;</span> <span style="color:#f92672">&amp;</span>styleConfigs);
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p><strong>生成策略</strong>（<code>generateAtlas()</code>, <code>src/SeatCanvas/core/style/SeatStyleAtlasManager.cpp:48</code>）：</p>
+<ol>
+<li>根据座位尺寸 × density 计算每个样式项的像素尺寸</li>
+<li>按最多 10 列排列所有样式，计算图集总尺寸</li>
+<li>创建 GPU 纹理（<code>RGBA_8888</code>, <code>RENDER_ATTACHMENT | TEXTURE_BINDING</code>）</li>
+<li>创建临时 Surface → Canvas</li>
+<li>遍历所有 <code>styleId → config</code> 映射，依次渲染到 Canvas 的对应格位</li>
+<li>计算每个格位的归一化 UV 坐标，填充 <code>uvRects</code>、<code>uvOffsets</code>、<code>styleIdToIndexMap</code></li>
+<li><code>context-&gt;flushAndSubmit()</code> 提交 GPU 命令</li>
+<li>通过 <code>onAtlasGenerated</code> 回调通知外部（触发 CustomSeatPass 更新 UV Offset 数组）</li>
+</ol>
+<p><strong>增量更新</strong>：当 <code>setStyleIdToConfigs</code> 检测到样式配置实际发生变化时，会清空图集并触发重新生成。如果样式配置未变化（数量和内容相同），则不触发重建。</p>
+<h3 id="52-seatstylerenderer">5.2 SeatStyleRenderer<a class="anchor" href="#52-seatstylerenderer">#</a></h3>
+<p>图集的实际绘制由 <code>SeatStyleRenderer</code> 接口完成：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SeatStyleRenderer</span> {
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">virtual</span> std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, tgfx<span style="color:#f92672">::</span>Rect<span style="color:#f92672">&gt;</span> renderAllSeatStyles(
+</span></span><span style="display:flex;"><span>        tgfx<span style="color:#f92672">::</span>Canvas <span style="color:#f92672">*</span>canvas,
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Size <span style="color:#f92672">&amp;</span>itemSize,
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">int</span> columns, <span style="color:#66d9ef">int</span> itemSpacing, <span style="color:#66d9ef">float</span> density,
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, std<span style="color:#f92672">::</span>shared_ptr<span style="color:#f92672">&lt;</span>SeatStyleConfig<span style="color:#f92672">&gt;&gt;</span> <span style="color:#f92672">&amp;</span>styleIdToConfig
+</span></span><span style="display:flex;"><span>    ) <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p><code>CanvasSeatStyleRenderer</code>（<code>src/SeatCanvas/core/style/CanvasSeatStyleRenderer.cpp</code>）是当前唯一实现，支持两种样式类型：</p>
+<ul>
+<li><strong>CircleSeatStyleConfig</strong>：纯色圆形填充 → <code>renderCircleStyle()</code> 使用 <code>canvas-&gt;drawPath(ovalPath, paint)</code> 绘制圆形；可选叠加层颜色（overlayColor）和勾选标记（checkmarkPath stroke）</li>
+<li><strong>SVGSeatStyleConfig</strong>：SVG 图片 → <code>renderSVGStyle()</code> 解析 SVG 内容为 <code>tgfx::SVGDOM</code>，缩放到 itemSize 后 <code>dom-&gt;render(canvas)</code> 渲染</li>
+</ul>
+<h3 id="53-图集到-shader-的数据流">5.3 图集到 Shader 的数据流<a class="anchor" href="#53-%e5%9b%be%e9%9b%86%e5%88%b0-shader-%e7%9a%84%e6%95%b0%e6%8d%ae%e6%b5%81">#</a></h3>
+<ol>
+<li><code>SeatStyleAtlasManager::getUVOffsets()</code> 返回扁平化的 UV 数组（每个样式 4 个 float）</li>
+<li><code>CustomSeatPass::updateUVOffset()</code> 接收此数组</li>
+<li>在 <code>updateUBOBuffer()</code> 中，UV 数组被打包进 UBO</li>
+<li>Vertex Shader 中，<code>textureCoordIndex</code> 实例属性被用作索引，从 UBO 的 UV 数组中查找对应范围的偏移</li>
+<li>Fragment Shader 使用重映射后的 UV 对图集纹理采样</li>
+</ol>
+<p>这种<strong>数组化 UV</strong> 的方式避免了为每个样式绑定独立纹理或使用纹理数组（Texture Array），在 OpenGL ES 3.0 环境下有更好的兼容性。</p>
+<h2 id="6-坐标系统与-viewport-管理">6. 坐标系统与 Viewport 管理<a class="anchor" href="#6-%e5%9d%90%e6%a0%87%e7%b3%bb%e7%bb%9f%e4%b8%8e-viewport-%e7%ae%a1%e7%90%86">#</a></h2>
+<h3 id="61-三层坐标空间">6.1 三层坐标空间<a class="anchor" href="#61-%e4%b8%89%e5%b1%82%e5%9d%90%e6%a0%87%e7%a9%ba%e9%97%b4">#</a></h3>
+<p>SeatCanvas 维护三个坐标空间，通过 <code>SeatCanvasCoreRendererState</code> 统一管理：</p>
+<pre tabindex="0"><code>原始坐标 (Original)  →  规范化内容坐标 (Normalized Content)  →  屏幕坐标 (Screen)</code></pre><ul>
+<li><strong>原始坐标</strong>：底图 SVG 数据的原始坐标系（<code>originSize</code>）</li>
+<li><strong>规范化内容坐标</strong>：按固定宽度基准缩放后的大小（<code>normalizedContentSize</code>），避免超大 SVG 导致过小的缩放级别</li>
+<li><strong>屏幕坐标</strong>：最终像素坐标（<code>width × height × density</code>）</li>
+</ul>
+<p><code>getMVPMatrix()</code> 计算从原始坐标到 NDC（归一化设备坐标）的完整变换链：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span>tgfx<span style="color:#f92672">::</span>Matrix getMVPMatrix() <span style="color:#66d9ef">const</span>;  <span style="color:#75715e">// 原始坐标 → 规范化内容坐标 → 屏幕坐标 → NDC
+</span></span></span></code></pre></div><p><strong>坐标转换工具函数</strong>（<code>SeatCanvasCoreRendererState.hpp:74-84</code>）：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">inline</span> tgfx<span style="color:#f92672">::</span>Point ConvertScreenToContent(<span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>location,
+</span></span><span style="display:flex;"><span>                                           <span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>contentOffset, <span style="color:#66d9ef">float</span> scale) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> tgfx<span style="color:#f92672">::</span>Point<span style="color:#f92672">::</span>Make(
+</span></span><span style="display:flex;"><span>        (location.x <span style="color:#f92672">-</span> contentOffset.x) <span style="color:#f92672">/</span> scale,
+</span></span><span style="display:flex;"><span>        (location.y <span style="color:#f92672">-</span> contentOffset.y) <span style="color:#f92672">/</span> scale);
+</span></span><span style="display:flex;"><span>}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">inline</span> tgfx<span style="color:#f92672">::</span>Point ConvertContentToScreen(<span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>location,
+</span></span><span style="display:flex;"><span>                                           <span style="color:#66d9ef">const</span> tgfx<span style="color:#f92672">::</span>Point <span style="color:#f92672">&amp;</span>contentOffset, <span style="color:#66d9ef">float</span> scale) {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> tgfx<span style="color:#f92672">::</span>Point<span style="color:#f92672">::</span>Make(
+</span></span><span style="display:flex;"><span>        location.x <span style="color:#f92672">*</span> scale <span style="color:#f92672">+</span> contentOffset.x,
+</span></span><span style="display:flex;"><span>        location.y <span style="color:#f92672">*</span> scale <span style="color:#f92672">+</span> contentOffset.y);
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><h3 id="62-viewportcontroller">6.2 ViewportController<a class="anchor" href="#62-viewportcontroller">#</a></h3>
+<p><code>ViewportController</code>（<code>src/SeatCanvas/core/renderer/ViewportController.{hpp,cpp}</code>）在 <code>ElasticZoomPanController</code> 和 <code>SeatCanvasCoreRendererState</code> 之间充当中间层，负责：</p>
+<ul>
+<li><strong>zoomToRect</strong>：以动画方式缩放到指定矩形区域（EaseInOut 曲线，可配置 durationMs 和 padding）</li>
+<li><strong>视口事件生成</strong>：<code>makeViewportEvent()</code> 快照当前状态为 <code>SeatCanvasViewportEvent</code></li>
+<li><strong>zoomLevel 管理</strong>：<code>ZoomLevelConfig</code> 控制座位、行标签、区域标签、场馆标签分别在什么缩放级别下可见</li>
+</ul>
+<h3 id="63-seat-可见性控制">6.3 Seat 可见性控制<a class="anchor" href="#63-seat-%e5%8f%af%e8%a7%81%e6%80%a7%e6%8e%a7%e5%88%b6">#</a></h3>
+<p>座位的显示/隐藏受两级条件控制：</p>
+<ul>
+<li><strong>shouldAutoDrawSeat()</strong>：首先检查业务方是否通过 <code>isAutoDrawSeatDisabled</code> 主动禁用了自动绘制；其次判断 <code>zoomScale &gt; seatRenderZoomThreshold</code></li>
+<li><strong>seatRenderZoomThreshold</strong>：当 <code>zoomScale &gt;= threshold</code> 时座位才被渲染（可通过 API 动态设置）</li>
+<li><strong>ZoomLevelConfig.seat</strong>：系统内部计算的基础阈值，由底图尺寸和视口尺寸推导</li>
+</ul>
+<p>当缩放比例低于阈值时，<code>prepareSeatIfNeeded</code> 不会收集任何座位数据，CustomSeatPass 的 <code>hasData()</code> 返回 false，从而跳过座位渲染，仅显示底图的&quot;彩虹图&quot;（区域颜色填充），节省大量 GPU 开销。</p>
+<h2 id="7-座位数据管理">7. 座位数据管理<a class="anchor" href="#7-%e5%ba%a7%e4%bd%8d%e6%95%b0%e6%8d%ae%e7%ae%a1%e7%90%86">#</a></h2>
+<h3 id="71-seatdatamanager">7.1 SeatDataManager<a class="anchor" href="#71-seatdatamanager">#</a></h3>
+<p><code>SeatDataManager</code>（<code>src/SeatCanvas/core/renderer/SeatDataManager.{hpp,cpp}</code>）管理座位的全生命周期数据：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cpp" data-lang="cpp"><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SeatDataManager</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 基础数据
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>kk<span style="color:#f92672">::</span>SeatData<span style="color:#f92672">&gt;&gt;</span> _seatDataMap;  <span style="color:#75715e">// zoneId → seats
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, ZoneSeatRuntimeState<span style="color:#f92672">&gt;</span> _seatStateByZone;   <span style="color:#75715e">// zoneId → statuses
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unordered_map<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string, SeatLocation<span style="color:#f92672">&gt;</span> _seatIndexById;             <span style="color:#75715e">// seatId → (zoneId, index)
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 价格编码（用于样式匹配）
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> _pricecodes;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">// 选中集合
+</span></span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>set<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> _selectedSeatIds;
+</span></span><span style="display:flex;"><span>};</span></span></code></pre></div><p><strong>关键方法</strong>：</p>
+<table>
+  <thead>
+      <tr>
+          <th>方法</th>
+          <th>语义</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td><code>registerPricecodes(pricecodes)</code></td>
+          <td>注册价格编码列表，数组索引即为 <code>pricecodeIndex</code></td>
+      </tr>
+      <tr>
+          <td><code>setSeatData(zoneId, seats)</code></td>
+          <td>设置区域座位数据（几何 + pricecodeIndex），<strong>重置该区域所有状态为 0</strong></td>
+      </tr>
+      <tr>
+          <td><code>updateSeatStatuses(updates)</code></td>
+          <td>批量更新座位状态</td>
+      </tr>
+      <tr>
+          <td><code>updateSeatStatusesForZone(zoneId, statuses)</code></td>
+          <td>按区域更新状态</td>
+      </tr>
+      <tr>
+          <td><code>setSelectedSeatIds(seatIds)</code></td>
+          <td>全量设置选中集合</td>
+      </tr>
+      <tr>
+          <td><code>updateSelectedSeatIds(added, removed)</code></td>
+          <td>增量更新选中</td>
+      </tr>
+  </tbody>
+</table>
+<h3 id="72-样式键匹配机制">7.2 样式键匹配机制<a class="anchor" href="#72-%e6%a0%b7%e5%bc%8f%e9%94%ae%e5%8c%b9%e9%85%8d%e6%9c%ba%e5%88%b6">#</a></h3>
+<p>关键约定：样式键由 <code>SeatRenderStyleId.compose(pricecode, status, selected)</code> 组成（C++ 侧 <code>composeSeatStyleId</code>），必须与通过 <code>setStyleKeyToConfigFromJSON</code> 注册的 JSON keys 精确匹配。未注册的 key 会导致对应座位不绘制。</p>
+<p>这意味着座位最终的视觉呈现由三个因素决定：</p>
+<ul>
+<li><strong>pricecodeIndex</strong>：座位所属价格编码（由业务方在 <code>setSeatData</code> 时指定）</li>
+<li><strong>status</strong>：<code>uint32_t</code> 状态值，引擎不预设状态枚举，由业务层自定义含义，通过 <code>updateSeatStatuses</code> / <code>updateSeatStatusesForZone</code> 写入。<code>setSeatData</code> 时状态统一重置为 0</li>
+<li><strong>selected</strong>：是否被选中</li>
+</ul>
+<h2 id="8-跨平台设计">8. 跨平台设计<a class="anchor" href="#8-%e8%b7%a8%e5%b9%b3%e5%8f%b0%e8%ae%be%e8%ae%a1">#</a></h2>
+<h3 id="81-平台抽象层">8.1 平台抽象层<a class="anchor" href="#81-%e5%b9%b3%e5%8f%b0%e6%8a%bd%e8%b1%a1%e5%b1%82">#</a></h3>
+<p>SeatCanvas 的核心 C++ 代码（约 180+ 源文件）完全平台无关。平台差异通过以下抽象接口隔离：</p>
+<p><strong>PlatformView</strong>（<code>src/SeatCanvas/core/renderer/PlatformView.hpp</code>）：封装 GPU 窗口/表面的创建和管理：</p>
+<table>
+  <thead>
+      <tr>
+          <th>平台</th>
+          <th>实现文件</th>
+          <th>GPU 后端</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>iOS</td>
+          <td><code>IOSPlatformView.mm</code></td>
+          <td>Metal（通过 MTKView）</td>
+      </tr>
+      <tr>
+          <td>Android</td>
+          <td><code>AndroidPlatformView.cpp</code></td>
+          <td>OpenGL ES（通过 TextureView）</td>
+      </tr>
+      <tr>
+          <td>OHOS</td>
+          <td><code>OHOSPlatformView.cpp</code></td>
+          <td>OpenGL ES（通过 XComponent）</td>
+      </tr>
+  </tbody>
+</table>
+<p><strong>DisplayLink</strong>（<code>src/SeatCanvas/core/utils/DisplayLink.hpp</code>）：帧刷新驱动：</p>
+<table>
+  <thead>
+      <tr>
+          <th>平台</th>
+          <th>实现</th>
+          <th>文件</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>iOS</td>
+          <td>CADisplayLink</td>
+          <td><code>NativeDisplayLink.h</code></td>
+      </tr>
+      <tr>
+          <td>Android</td>
+          <td>Choreographer / ValueAnimator</td>
+          <td><code>NativeDisplayLink.cpp</code></td>
+      </tr>
+      <tr>
+          <td>OHOS</td>
+          <td>VSync callback</td>
+          <td><code>NativeDisplayLink.cpp</code></td>
+      </tr>
+  </tbody>
+</table>
+<p><strong>Platform</strong>（<code>src/SeatCanvas/core/Platform.{hpp,cpp}</code>）：平台工具方法（媒体时间戳、线程 ID 等）。</p>
+<h3 id="82-三端桥接方式">8.2 三端桥接方式<a class="anchor" href="#82-%e4%b8%89%e7%ab%af%e6%a1%a5%e6%8e%a5%e6%96%b9%e5%bc%8f">#</a></h3>
+<table>
+  <thead>
+      <tr>
+          <th>平台</th>
+          <th>桥接技术</th>
+          <th>关键文件</th>
+      </tr>
+  </thead>
+  <tbody>
+      <tr>
+          <td>iOS</td>
+          <td>Swift + Objective-C++ 混合</td>
+          <td><code>swift/SeatCanvasCoreRendererBridge.h</code>, <code>swift/SwiftSeatCanvasCoreRendererDelegate.hpp</code></td>
+      </tr>
+      <tr>
+          <td>Android</td>
+          <td>JNI</td>
+          <td><code>android/jni/JNILoader.cpp</code>（81个 JNI 函数）</td>
+      </tr>
+      <tr>
+          <td>OHOS</td>
+          <td>NAPI</td>
+          <td><code>ohos/JRendererCore.cpp</code>（93个 NAPI 函数）</td>
+      </tr>
+  </tbody>
+</table>
+<p>每端的桥接层负责：</p>
+<ol>
+<li>将平台手势事件转换为 C++ 的 <code>GestureState</code> + 坐标</li>
+<li>将 C++ 的 delegate 回调转发回平台语言</li>
+<li>数据类型转换（如 Android 的 <code>JRect</code>、<code>JSeatData</code>、<code>JZoomLevel</code>）</li>
+</ol>
+<h3 id="83-swift-端示例">8.3 Swift 端示例<a class="anchor" href="#83-swift-%e7%ab%af%e7%a4%ba%e4%be%8b">#</a></h3>
+<p>iOS 端的 Swift API 通过内部可见的桥接模块暴露：</p>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-swift" data-lang="swift"><span style="display:flex;"><span>@MainActor
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">final</span> <span style="color:#66d9ef">class</span> <span style="color:#a6e22e">SeatCanvasCoreRenderer</span> {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">func</span> <span style="color:#a6e22e">loadBaseMap</span>(<span style="color:#66d9ef">_</span> data: Data?, format: BaseMapFormat, parseConfigJSON: Data?)
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">func</span> <span style="color:#a6e22e">applySeatStyleJSONConfig</span>(<span style="color:#66d9ef">_</span> json: Data?)
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">func</span> <span style="color:#a6e22e">handTap</span>(<span style="color:#66d9ef">_</span> location: CGPoint)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> seatRenderZoomThreshold: CGFloat { <span style="color:#66d9ef">get</span> <span style="color:#66d9ef">set</span> }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> zoomScale: CGFloat { <span style="color:#66d9ef">get</span> }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> minimumZoomScale: CGFloat { <span style="color:#66d9ef">get</span> }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> maximumZoomScale: CGFloat { <span style="color:#66d9ef">get</span> }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> zoomLevel: ZoomLevel { <span style="color:#66d9ef">get</span> }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">var</span> debugHUDEnabled: Bool { <span style="color:#66d9ef">get</span> <span style="color:#66d9ef">set</span> }
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><h2 id="9-性能优化策略">9. 性能优化策略<a class="anchor" href="#9-%e6%80%a7%e8%83%bd%e4%bc%98%e5%8c%96%e7%ad%96%e7%95%a5">#</a></h2>
+<h3 id="91-实例化渲染">9.1 实例化渲染<a class="anchor" href="#91-%e5%ae%9e%e4%be%8b%e5%8c%96%e6%b8%b2%e6%9f%93">#</a></h3>
+<p>CustomSeatPass 的核心优化：一次 Draw Call 渲染所有同区域座位。每个座位的差异化数据（位置、旋转、UV）存储在实例缓冲区中，由 GPU 在 Vertex Shader 中并行处理。对于 10,000 个座位，这意味着 10,000 次传统 Draw Call → 1 次 Draw Call。</p>
+<h3 id="92-纹理图集">9.2 纹理图集<a class="anchor" href="#92-%e7%ba%b9%e7%90%86%e5%9b%be%e9%9b%86">#</a></h3>
+<p>所有座位样式被合并到一张图集中，避免运行时纹理切换。Shader 通过 <code>textureCoordIndex</code> 从 UV 数组中查找对应范围，在一个 RenderPass 中绘制所有不同样式的座位。</p>
+<h3 id="93-按需加载">9.3 按需加载<a class="anchor" href="#93-%e6%8c%89%e9%9c%80%e5%8a%a0%e8%bd%bd">#</a></h3>
+<p>座位数据的加载受可见性驱动：</p>
+<ul>
+<li>CPU 侧：<code>getVisibleZoneMesheIndices()</code> 先做包围盒裁剪，只提交可见区域的顶点</li>
+<li>缩放级别低于阈值时，直接隐藏所有座位，只显示底图</li>
+<li><code>visibleOriginalRect.outset(seatSize * 2, seatSize * 2)</code> 提供小幅扩展，避免边缘座位闪烁</li>
+</ul>
+<h3 id="94-单-vbo-设计">9.4 单 VBO 设计<a class="anchor" href="#94-%e5%8d%95-vbo-%e8%ae%be%e8%ae%a1">#</a></h3>
+<p>BaseMapMeshBuilder 将所有区域的顶点合并到单个 VBO，通过 <code>drawRanges</code> 数组记录每个区域的偏移和数量。绘制时 <code>renderFill()</code> 通过 <code>draw(Triangles, vertexCount, 1, vertexOffset)</code> 直接从全量 VBO 中按偏移量读取子集，连续区域合并为一次调用，避免多次 VBO 绑定和 draw call 开销。</p>
+<h3 id="95-惰性图集重建">9.5 惰性图集重建<a class="anchor" href="#95-%e6%83%b0%e6%80%a7%e5%9b%be%e9%9b%86%e9%87%8d%e5%bb%ba">#</a></h3>
+<p><code>SeatStyleAtlasManager::setStyleIdToConfigs()</code> 在设置新样式配置时会逐项比较，如果配置内容无变化则跳过重建。同样，<code>update()</code> 只在 seatSize 或 density 变化时才重新生成。</p>
+<h3 id="96-displaylist-脏区域追踪">9.6 DisplayList 脏区域追踪<a class="anchor" href="#96-displaylist-%e8%84%8f%e5%8c%ba%e5%9f%9f%e8%bf%bd%e8%b8%aa">#</a></h3>
+<p>覆盖图层（SeatOverlayLayerTree）使用 <code>tgfx::DisplayList</code> 的脏区域追踪，只重绘变化部分。</p>
+<h3 id="97-displaylink-按需启停">9.7 DisplayLink 按需启停<a class="anchor" href="#97-displaylink-%e6%8c%89%e9%9c%80%e5%90%af%e5%81%9c">#</a></h3>
+<p><code>ElasticZoomPanController::handleDisplayLinkFire()</code> 返回是否需要继续刷新。当所有动画（惯性滑动、回弹）都结束时返回 <code>false</code>，平台层据此停止 DisplayLink，降低 CPU 占用和功耗。DisplayLink 的 start/stop 实现了幂等性保护，重复调用不会产生副作用。</p>
+<h2 id="10-总结">10. 总结<a class="anchor" href="#10-%e6%80%bb%e7%bb%93">#</a></h2>
+<p>SeatCanvas 的架构设计体现了移动端 GPU 渲染的几个关键原则：</p>
+<ol>
+<li><strong>减少 Draw Call</strong>：通过实例化渲染和单 VBO 合并，将大量座位的绘制开销降到最低</li>
+<li><strong>纹理图集 + UV 数组</strong>：用内存换纹理切换，用 Shader 中的索引查找替代动态纹理绑定</li>
+<li><strong>CPU 侧裁剪先行</strong>：在提交 GPU 命令前完成可见性判断，减少无用渲染</li>
+<li><strong>弹性手势系统</strong>：rubber-band 阻尼 + 临界阻尼弹簧 = 自然流畅的交互体验</li>
+<li><strong>C++ 核心 + 薄桥接</strong>：一套核心代码，三端复用的跨平台策略</li>
+</ol>
+<p>这些设计使得 SeatCanvas 能够在移动设备有限的 GPU 资源下，流畅渲染包含上万个座位的场馆地图，同时保持 60fps 和自然的交互手感。</p>
+<hr>
+<p><em>本文基于 <a href="https://github.com/0x1306a94/seatcanvas">SeatCanvas</a> 仓库 <code>develop</code> 分支代码（截止 2026-05-25）。</em></p>
+</article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+<div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/docs/llvm/ch01/01/trace/" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Backward" />
+        <span>Trace</span>
+      </a>
+    
+    </span>
+    <span>
+    
+    </span>
+  </div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+  
+ 
+        
+  
+    <script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script>
+  
+
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+  
+  <aside class="book-toc">
+    <div class="book-toc-content">
+      
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#seatcanvas跨平台高性能座位图渲染引擎架构解析">SeatCanvas：跨平台高性能座位图渲染引擎架构解析</a>
+      <ul>
+        <li><a href="#1-引言">1. 引言</a></li>
+        <li><a href="#2-整体架构">2. 整体架构</a>
+          <ul>
+            <li><a href="#21-核心类seatcanvascorerenderer">2.1 核心类：SeatCanvasCoreRenderer</a></li>
+            <li><a href="#22-delegate-模式">2.2 Delegate 模式</a></li>
+            <li><a href="#23-典型加载流程">2.3 典型加载流程</a></li>
+          </ul>
+        </li>
+        <li><a href="#3-渲染管线">3. 渲染管线</a>
+          <ul>
+            <li><a href="#31-绘制流程">3.1 绘制流程</a></li>
+            <li><a href="#32-custombasemappass底图渲染">3.2 CustomBaseMapPass：底图渲染</a></li>
+            <li><a href="#33-customseatpass实例化座位渲染">3.3 CustomSeatPass：实例化座位渲染</a></li>
+            <li><a href="#34-覆盖图层overlay--minimap">3.4 覆盖图层（Overlay &amp; Minimap）</a></li>
+          </ul>
+        </li>
+        <li><a href="#4-手势系统">4. 手势系统</a>
+          <ul>
+            <li><a href="#41-整体架构">4.1 整体架构</a></li>
+            <li><a href="#42-弹性边界">4.2 弹性边界</a></li>
+            <li><a href="#43-惯性滑动与回弹">4.3 惯性滑动与回弹</a></li>
+            <li><a href="#44-缩放处理">4.4 缩放处理</a></li>
+            <li><a href="#45-displaylink-驱动">4.5 DisplayLink 驱动</a></li>
+            <li><a href="#46-手势状态机">4.6 手势状态机</a></li>
+          </ul>
+        </li>
+        <li><a href="#5-纹理图集系统">5. 纹理图集系统</a>
+          <ul>
+            <li><a href="#51-seatstyleatlasmanager">5.1 SeatStyleAtlasManager</a></li>
+            <li><a href="#52-seatstylerenderer">5.2 SeatStyleRenderer</a></li>
+            <li><a href="#53-图集到-shader-的数据流">5.3 图集到 Shader 的数据流</a></li>
+          </ul>
+        </li>
+        <li><a href="#6-坐标系统与-viewport-管理">6. 坐标系统与 Viewport 管理</a>
+          <ul>
+            <li><a href="#61-三层坐标空间">6.1 三层坐标空间</a></li>
+            <li><a href="#62-viewportcontroller">6.2 ViewportController</a></li>
+            <li><a href="#63-seat-可见性控制">6.3 Seat 可见性控制</a></li>
+          </ul>
+        </li>
+        <li><a href="#7-座位数据管理">7. 座位数据管理</a>
+          <ul>
+            <li><a href="#71-seatdatamanager">7.1 SeatDataManager</a></li>
+            <li><a href="#72-样式键匹配机制">7.2 样式键匹配机制</a></li>
+          </ul>
+        </li>
+        <li><a href="#8-跨平台设计">8. 跨平台设计</a>
+          <ul>
+            <li><a href="#81-平台抽象层">8.1 平台抽象层</a></li>
+            <li><a href="#82-三端桥接方式">8.2 三端桥接方式</a></li>
+            <li><a href="#83-swift-端示例">8.3 Swift 端示例</a></li>
+          </ul>
+        </li>
+        <li><a href="#9-性能优化策略">9. 性能优化策略</a>
+          <ul>
+            <li><a href="#91-实例化渲染">9.1 实例化渲染</a></li>
+            <li><a href="#92-纹理图集">9.2 纹理图集</a></li>
+            <li><a href="#93-按需加载">9.3 按需加载</a></li>
+            <li><a href="#94-单-vbo-设计">9.4 单 VBO 设计</a></li>
+            <li><a href="#95-惰性图集重建">9.5 惰性图集重建</a></li>
+            <li><a href="#96-displaylist-脏区域追踪">9.6 DisplayList 脏区域追踪</a></li>
+            <li><a href="#97-displaylink-按需启停">9.7 DisplayLink 按需启停</a></li>
+          </ul>
+        </li>
+        <li><a href="#10-总结">10. 总结</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+    </div>
+  </aside>
+  
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

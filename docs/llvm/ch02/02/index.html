@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN" dir="ltr">
+<head>
+  <!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content=" 产生这个想法,源于一位大佬问我 Swift 调用 C&#43;&#43; 的解决方案是啥?
+已知方案# C 包装 C&#43;&#43; Objective-C&#43;&#43; 包装 C&#43;&#43; 上面两种方式都需收开发人员手动去写对应的包装接口,作为一个新生代的农民工,应该想办法自动的完成这件事,为自己挤出更多的摸鱼划水的时间。
+如何自动生成？# 之前在研究一个动态二维码code时,一开始是用Rust实现了一遍,然后通过Rust生成 ffi接口,以供iOS Android使用。Rust 通过在函数使用 extern &#34;C&#34; #[no_mangle]。然后通过 cbindgen 这类工具即可自动生成对应的 ffi 接口 所以我就想，能不能用类似的方式，在C&#43;&#43;的类，函数上加点料，然后再通过一个工具，找出这些，自动生成对应的 Objective-C&#43;&#43; 答案是可以的， 可以利用 __attribute__((annotate())) 这个料又如何读出来呢？ AST# 示例 #ifndef annotate_h #define annotate_h #define GEN_ANNOTATE_CLASS __attribute__((annotate(&#34;native_gen_class&#34;))) #define GEN_ANNOTATE_METHOD __attribute__((annotate(&#34;native_gen_method&#34;))) #define GEN_ANNOTATE_INCLUDE __attribute__((annotate(&#34;native_gen_class_include&#34;))) #endif /* annotate_h */#ifndef kit_hpp #define kit_hpp #include &lt;string&gt; #include &#34;annotate.h&#34; using namespace std; namespace TT { struct GEN_ANNOTATE_CLASS GEN_ANNOTATE_INCLUDE Kit { int a = 0; GEN_ANNOTATE_METHOD bool vaild() const; }; }; // namespace TT class GEN_ANNOTATE_CLASS Kit2 { int a = 0; bool vaild() const; GEN_ANNOTATE_METHOD void test(string str); GEN_ANNOTATE_METHOD void test2(const char *str); }; #endif /* kit_hpp */ 打印AST clang&#43;&#43; -Xclang -ast-dump -fsyntax-only kit.cpp
+">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#2e3440">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="https://blog.0x1306a94.com/docs/llvm/ch02/02/">
+  <meta property="og:site_name" content="0x1306a94.com">
+  <meta property="og:title" content="基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证">
+  <meta property="og:description" content="产生这个想法,源于一位大佬问我 Swift 调用 C&#43;&#43; 的解决方案是啥?
+已知方案# C 包装 C&#43;&#43; Objective-C&#43;&#43; 包装 C&#43;&#43; 上面两种方式都需收开发人员手动去写对应的包装接口,作为一个新生代的农民工,应该想办法自动的完成这件事,为自己挤出更多的摸鱼划水的时间。
+如何自动生成？# 之前在研究一个动态二维码code时,一开始是用Rust实现了一遍,然后通过Rust生成 ffi接口,以供iOS Android使用。Rust 通过在函数使用 extern &#34;C&#34; #[no_mangle]。然后通过 cbindgen 这类工具即可自动生成对应的 ffi 接口 所以我就想，能不能用类似的方式，在C&#43;&#43;的类，函数上加点料，然后再通过一个工具，找出这些，自动生成对应的 Objective-C&#43;&#43; 答案是可以的， 可以利用 __attribute__((annotate())) 这个料又如何读出来呢？ AST# 示例 #ifndef annotate_h #define annotate_h #define GEN_ANNOTATE_CLASS __attribute__((annotate(&#34;native_gen_class&#34;))) #define GEN_ANNOTATE_METHOD __attribute__((annotate(&#34;native_gen_method&#34;))) #define GEN_ANNOTATE_INCLUDE __attribute__((annotate(&#34;native_gen_class_include&#34;))) #endif /* annotate_h */#ifndef kit_hpp #define kit_hpp #include &lt;string&gt; #include &#34;annotate.h&#34; using namespace std; namespace TT { struct GEN_ANNOTATE_CLASS GEN_ANNOTATE_INCLUDE Kit { int a = 0; GEN_ANNOTATE_METHOD bool vaild() const; }; }; // namespace TT class GEN_ANNOTATE_CLASS Kit2 { int a = 0; bool vaild() const; GEN_ANNOTATE_METHOD void test(string str); GEN_ANNOTATE_METHOD void test2(const char *str); }; #endif /* kit_hpp */ 打印AST clang&#43;&#43; -Xclang -ast-dump -fsyntax-only kit.cpp">
+  <meta property="og:locale" content="zh_CN">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="docs">
+    <meta property="article:published_time" content="2021-08-25T09:27:34+08:00">
+    <meta property="article:modified_time" content="2021-08-25T09:27:34+08:00">
+
+
+  <meta itemprop="name" content="基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证">
+  <meta itemprop="description" content="产生这个想法,源于一位大佬问我 Swift 调用 C&#43;&#43; 的解决方案是啥?
+已知方案# C 包装 C&#43;&#43; Objective-C&#43;&#43; 包装 C&#43;&#43; 上面两种方式都需收开发人员手动去写对应的包装接口,作为一个新生代的农民工,应该想办法自动的完成这件事,为自己挤出更多的摸鱼划水的时间。
+如何自动生成？# 之前在研究一个动态二维码code时,一开始是用Rust实现了一遍,然后通过Rust生成 ffi接口,以供iOS Android使用。Rust 通过在函数使用 extern &#34;C&#34; #[no_mangle]。然后通过 cbindgen 这类工具即可自动生成对应的 ffi 接口 所以我就想，能不能用类似的方式，在C&#43;&#43;的类，函数上加点料，然后再通过一个工具，找出这些，自动生成对应的 Objective-C&#43;&#43; 答案是可以的， 可以利用 __attribute__((annotate())) 这个料又如何读出来呢？ AST# 示例 #ifndef annotate_h #define annotate_h #define GEN_ANNOTATE_CLASS __attribute__((annotate(&#34;native_gen_class&#34;))) #define GEN_ANNOTATE_METHOD __attribute__((annotate(&#34;native_gen_method&#34;))) #define GEN_ANNOTATE_INCLUDE __attribute__((annotate(&#34;native_gen_class_include&#34;))) #endif /* annotate_h */#ifndef kit_hpp #define kit_hpp #include &lt;string&gt; #include &#34;annotate.h&#34; using namespace std; namespace TT { struct GEN_ANNOTATE_CLASS GEN_ANNOTATE_INCLUDE Kit { int a = 0; GEN_ANNOTATE_METHOD bool vaild() const; }; }; // namespace TT class GEN_ANNOTATE_CLASS Kit2 { int a = 0; bool vaild() const; GEN_ANNOTATE_METHOD void test(string str); GEN_ANNOTATE_METHOD void test2(const char *str); }; #endif /* kit_hpp */ 打印AST clang&#43;&#43; -Xclang -ast-dump -fsyntax-only kit.cpp">
+  <meta itemprop="datePublished" content="2021-08-25T09:27:34+08:00">
+  <meta itemprop="dateModified" content="2021-08-25T09:27:34+08:00">
+  <meta itemprop="wordCount" content="721">
+
+<title>基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证 • 0x1306a94.com</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="https://blog.0x1306a94.com/docs/llvm/ch02/02/">
+<link rel="stylesheet" href="/book.min.7dca40f168e2fd532b7b1937df678e5fcb9289577e924bd85f799138b6137fa6.css" integrity="sha256-fcpA8Wji/VMrexk332eOX8uSiVd&#43;kkvYX3mROLYTf6Y=" crossorigin="anonymous">
+
+
+  <script defer type="module" src="/en.search.min.a065d1c80af7beaff68b7c9629c5e374db141794c9c1b23c68e6875349454e71.js" integrity="sha256-oGXRyAr3vq/2i3yWKcXjdNsUF5TJwbI8aOaHU0lFTnE=" crossorigin="anonymous"></script>
+
+  
+</head>
+<body dir="ltr" class="book-kind-page book-type-docs">
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><span>0x1306a94.com</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input id="book-search-input" type="text" 
+    placeholder="Search"
+    aria-label="Search"
+    maxlength="64" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch02/02/" class="">
+      全屏Feed ScrollView嵌套时滑动问题</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/" class="">
+      自定义 LLVM PASS 实现 函数耗时插桩统计</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/ui/ch01/01/" class="">
+      实现抖音评论列表效果</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/ios/runtime/ch01/01/" class="">
+      Objective C 关联对象原理</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/wwdc22/ch01/01/" class="">
+      运行时优化</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch02/02/" class="active">
+      基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/ffmpeg/ch01/01/" class="">
+      iOS使用FFmepeg命令行工具源码实现转码功能</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/swift/ch01/01/" class="">
+      Swift Substring</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/llvm/ch01/01/trace/" class="">
+      Trace</a>
+  
+
+        </li>
+      
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/other/seatcanvas%E6%8A%80%E6%9C%AF%E6%9E%B6%E6%9E%84%E8%A7%A3%E6%9E%90/" class="">
+      Seat Canvas技术架构解析</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/icons/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>基于 LibTooling 生成 C&#43;&#43; 的 Objective-C&#43;&#43; 包装接口想法初步验证</h3>
+
+  <label for="toc-control">
+    
+    <img src="/icons/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+            <li><a href="#libtooling">LibTooling</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><blockquote class='book-hint '>
+<p>产生这个想法,源于一位大佬问我 <code>Swift 调用 C++ 的解决方案是啥?</code></p>
+</blockquote><h4 id="已知方案">已知方案<a class="anchor" href="#%e5%b7%b2%e7%9f%a5%e6%96%b9%e6%a1%88">#</a></h4>
+<ul>
+<li><code>C</code> 包装 <code>C++</code></li>
+<li><code>Objective-C++</code> 包装 <code>C++</code></li>
+</ul>
+<blockquote class='book-hint '>
+<p>上面两种方式都需收开发人员手动去写对应的包装接口,作为一个新生代的农民工,应该想办法自动的完成这件事,为自己挤出更多的摸鱼划水的时间。</p>
+</blockquote><h4 id="如何自动生成">如何自动生成？<a class="anchor" href="#%e5%a6%82%e4%bd%95%e8%87%aa%e5%8a%a8%e7%94%9f%e6%88%90">#</a></h4>
+<ul>
+<li>之前在研究一个<code>动态二维码code</code>时,一开始是用<code>Rust</code>实现了一遍,然后通过<code>Rust</code>生成 <code>ffi</code>接口,以供<code>iOS</code> <code>Android</code>使用。<code>Rust</code> 通过在函数使用 <code>extern &quot;C&quot;</code> <code>#[no_mangle]</code>。然后通过 <code>cbindgen</code> 这类工具即可自动生成对应的 <code>ffi</code> 接口</li>
+<li>所以我就想，能不能用类似的方式，在<code>C++</code>的类，函数上加点料，然后再通过一个工具，找出这些，自动生成对应的 <code>Objective-C++</code>
+<ul>
+<li>答案是可以的， 可以利用 <code>__attribute__((annotate()))</code></li>
+<li>这个料又如何读出来呢？</li>
+</ul>
+</li>
+</ul>
+<h4 id="ast">AST<a class="anchor" href="#ast">#</a></h4>
+<ul>
+<li>示例</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-C" data-lang="C"><span style="display:flex;"><span><span style="color:#75715e">#ifndef annotate_h
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define annotate_h
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#define GEN_ANNOTATE_CLASS __attribute__((annotate(&#34;native_gen_class&#34;)))
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define GEN_ANNOTATE_METHOD __attribute__((annotate(&#34;native_gen_method&#34;)))
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define GEN_ANNOTATE_INCLUDE __attribute__((annotate(&#34;native_gen_class_include&#34;)))
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#endif </span><span style="color:#75715e">/* annotate_h */</span></span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">#ifndef kit_hpp
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#define kit_hpp
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&lt;string&gt;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;annotate.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> std;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">namespace</span> TT {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">GEN_ANNOTATE_CLASS</span> GEN_ANNOTATE_INCLUDE Kit {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> a <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    GEN_ANNOTATE_METHOD <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">vaild</span>() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>};  <span style="color:#75715e">// namespace TT
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">GEN_ANNOTATE_CLASS</span> Kit2 {
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">int</span> a <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>;
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">vaild</span>() <span style="color:#66d9ef">const</span>;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    GEN_ANNOTATE_METHOD <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">test</span>(string str);
+</span></span><span style="display:flex;"><span>    
+</span></span><span style="display:flex;"><span>    GEN_ANNOTATE_METHOD <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">test2</span>(<span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">*</span>str);
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#endif </span><span style="color:#75715e">/* kit_hpp */</span></span></span></code></pre></div><ul>
+<li>打印AST</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>clang++ -Xclang -ast-dump -fsyntax-only kit.cpp</span></span></code></pre></div><p><img src="./WX20210825-100041@2x.png" alt="" /></p>
+<ul>
+<li>可以看到图中的 <code>AnnotateAttr</code> `就是我们的加料</li>
+</ul>
+<h3 id="libtooling">LibTooling<a class="anchor" href="#libtooling">#</a></h3>
+<blockquote class='book-hint '>
+<p>通过<code>LibTooling</code>解析源码<code>AST</code>,只要找到符合的<code>AST</code>我们就生成对应的<code>Objective-C++</code>源码， 具体怎么做呢？</p>
+</blockquote><ul>
+<li>下载<a href="https://github.com/llvm/llvm-project"><code>llvm</code></a>源码</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>mkdir LLVM
+</span></span><span style="display:flex;"><span>cd LLVM
+</span></span><span style="display:flex;"><span>wget https://github.com/llvm/llvm-project/archive/refs/tags/llvmorg-13.0.0-rc1.zip
+</span></span><span style="display:flex;"><span>unzip llvmorg-13.0.0-rc1.zip</span></span></code></pre></div><ul>
+<li>
+<p>创建工程</p>
+<ul>
+<li>在解压后的源码目录<code>clang/examples</code>目录下新建一个文件夹，如<code>CppNativeGen</code></li>
+<li><code>clang/examples/CMakeLists.txt</code> 追加一行 <code>add_subdirectory(CppNativeGen)</code></li>
+<li><code>CppNativeGen</code> 目录结构如下</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>CppNativeGen
+</span></span><span style="display:flex;"><span>├── CMakeLists.txt
+</span></span><span style="display:flex;"><span>└── CppNativeGen.cpp</span></span></code></pre></div><ul>
+<li><code>CppNativeGen/MakeLists.txt</code> 内容如下</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-cmake" data-lang="cmake"><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">
+</span></span></span><span style="display:flex;"><span>add_clang_executable(<span style="color:#e6db74">cpp-native-gen</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">CppNativeGen.cpp</span>
+</span></span><span style="display:flex;"><span>)<span style="color:#960050;background-color:#1e0010">
+</span></span></span><span style="display:flex;"><span><span style="color:#960050;background-color:#1e0010">
+</span></span></span><span style="display:flex;"><span>target_link_libraries(<span style="color:#e6db74">cpp-native-gen</span> <span style="color:#e6db74">PRIVATE</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangAST</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangBasic</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangDriver</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangLex</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangParse</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangSema</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangFrontend</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangSerialization</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangTooling</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#e6db74">clangToolingCore</span>
+</span></span><span style="display:flex;"><span>)</span></span></code></pre></div></li>
+<li>
+<p>生成<code>Xcode</code>工程</p>
+<ul>
+<li>辅助脚本 <code>build.sh</code></li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span><span style="color:#75715e">#!/usr/bin/env bash
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>set -e
+</span></span><span style="display:flex;"><span>set -o pipefail
+</span></span><span style="display:flex;"><span>set -u
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>ROOT_DIR<span style="color:#f92672">=</span><span style="color:#e6db74">`</span>pwd<span style="color:#e6db74">`</span>
+</span></span><span style="display:flex;"><span>SOURCE_CODE_DIR<span style="color:#f92672">=</span>$ROOT_DIR/llvm-project-llvmorg-13.0.0-rc1
+</span></span><span style="display:flex;"><span>BUILD_DIR<span style="color:#f92672">=</span>$ROOT_DIR/build_dir
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>XCODE_BUILD_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_xcode
+</span></span><span style="display:flex;"><span>XCODE_OUT_DIR<span style="color:#f92672">=</span>$BUILD_DIR/build_xcode_out
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> generate_xcode_project<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    cd $XCODE_BUILD_DIR
+</span></span><span style="display:flex;"><span>    cmake -G <span style="color:#e6db74">&#34;Xcode&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DCMAKE_OSX_DEPLOYMENT_TARGET<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;10.14&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DCMAKE_OSX_SYSROOT<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;macosx&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DCMAKE_OSX_ARCHITECTURES<span style="color:#f92672">=</span><span style="color:#e6db74">&#39;x86_64;arm64&#39;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DLLVM_TARGETS_TO_BUILD<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;ARM;X86&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DCMAKE_BUILD_TYPE<span style="color:#f92672">=</span>Debug <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DCMAKE_INSTALL_PREFIX<span style="color:#f92672">=</span>$XCODE_OUT_DIR <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    -DLLVM_ENABLE_PROJECTS<span style="color:#f92672">=</span><span style="color:#e6db74">&#34;clang&#34;</span> <span style="color:#ae81ff">\
+</span></span></span><span style="display:flex;"><span>    $SOURCE_CODE_DIR/llvm
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> clear_build<span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    echo <span style="color:#e6db74">&#34;clear build dir&#34;</span>
+</span></span><span style="display:flex;"><span>    rm -rf $BUILD_DIR
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">function</span> onCtrlC <span style="color:#f92672">()</span> <span style="color:#f92672">{</span>
+</span></span><span style="display:flex;"><span>    clear_build
+</span></span><span style="display:flex;"><span>    exit <span style="color:#ae81ff">0</span>
+</span></span><span style="display:flex;"><span><span style="color:#f92672">}</span>
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>trap <span style="color:#e6db74">&#39;onCtrlC&#39;</span> INT
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>mkdir -p $XCODE_BUILD_DIR
+</span></span><span style="display:flex;"><span>generate_xcode_project</span></span></code></pre></div><ul>
+<li>生成工程</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-shell" data-lang="shell"><span style="display:flex;"><span>chmod +x ./build.sh <span style="color:#75715e"># 只需要执行一次</span>
+</span></span><span style="display:flex;"><span>./build.sh</span></span></code></pre></div></li>
+<li>
+<p>打开<code>build_dir/build_xcode/LLVM.xcodeproj</code></p>
+<ul>
+<li>打开后会提示创建<code>Scheme</code>, 选择手动， 将 <code>cpp-native-gen</code> 加上即可</li>
+</ul>
+</li>
+<li>
+<p><code>CppNativeGen.cpp</code> 源码</p>
+</li>
+</ul>
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code class="language-C++" data-lang="C++"><span style="display:flex;"><span><span style="color:#75715e">//===- CppNativeGen.cpp ---------------------------------------------===//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// See https://llvm.org/LICENSE.txt for license information.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//===----------------------------------------------------------------------===//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// Example clang plugin which simply prints the names of all the top-level decls
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">// in the input file.
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//===----------------------------------------------------------------------===//
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/AST/AST.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/AST/ASTConsumer.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/AST/RecursiveASTVisitor.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Frontend/CompilerInstance.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Frontend/FrontendActions.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Frontend/FrontendPluginRegistry.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Sema/Sema.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Tooling/CommonOptionsParser.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;clang/Tooling/Tooling.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Support/CommandLine.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Support/Signals.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">#include</span> <span style="color:#75715e">&#34;llvm/Support/raw_ostream.h&#34;</span><span style="color:#75715e">
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> clang;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">namespace</span> {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> llvm<span style="color:#f92672">::</span>StringRef AnnotationClassName{<span style="color:#e6db74">&#34;native_gen_class&#34;</span>};
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> llvm<span style="color:#f92672">::</span>StringRef AnnotationMethodName{<span style="color:#e6db74">&#34;native_gen_method&#34;</span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">CppNativeGenConsumer</span> <span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> ASTConsumer {
+</span></span><span style="display:flex;"><span>    CompilerInstance <span style="color:#f92672">&amp;</span>Instance;
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>set<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> ParsedTemplates;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">public</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    CppNativeGenConsumer(CompilerInstance <span style="color:#f92672">&amp;</span>Instance,
+</span></span><span style="display:flex;"><span>                         std<span style="color:#f92672">::</span>set<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> ParsedTemplates)
+</span></span><span style="display:flex;"><span>        <span style="color:#f92672">:</span> Instance(Instance)
+</span></span><span style="display:flex;"><span>        , ParsedTemplates(ParsedTemplates) {}
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">HandleTopLevelDecl</span>(DeclGroupRef DG) <span style="color:#66d9ef">override</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">for</span> (DeclGroupRef<span style="color:#f92672">::</span>iterator i <span style="color:#f92672">=</span> DG.begin(), e <span style="color:#f92672">=</span> DG.end(); i <span style="color:#f92672">!=</span> e; <span style="color:#f92672">++</span>i) {
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">const</span> Decl <span style="color:#f92672">*</span>D <span style="color:#f92672">=</span> <span style="color:#f92672">*</span>i;
+</span></span><span style="display:flex;"><span>            <span style="color:#75715e">// TODO: NamespaceDecl CXXRecordDecl 需要考虑 嵌套
+</span></span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (<span style="color:#66d9ef">const</span> NamespaceDecl <span style="color:#f92672">*</span>NSD <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>NamespaceDecl<span style="color:#f92672">&gt;</span>(D)) {
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">auto</span> I : NSD<span style="color:#f92672">-&gt;</span>decls()) {
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">if</span> (<span style="color:#66d9ef">const</span> CXXRecordDecl <span style="color:#f92672">*</span>RD <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>CXXRecordDecl<span style="color:#f92672">&gt;</span>(I)) {
+</span></span><span style="display:flex;"><span>                        HandleCXXRecordDecl(RD);
+</span></span><span style="display:flex;"><span>                    }
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            } <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">if</span> (<span style="color:#66d9ef">const</span> CXXRecordDecl <span style="color:#f92672">*</span>RD <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>CXXRecordDecl<span style="color:#f92672">&gt;</span>(D)) {
+</span></span><span style="display:flex;"><span>                HandleCXXRecordDecl(RD);
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> true;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">HandleCXXRecordDecl</span>(<span style="color:#66d9ef">const</span> CXXRecordDecl <span style="color:#f92672">*</span>RD) {
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (RD<span style="color:#f92672">-&gt;</span>hasAttr<span style="color:#f92672">&lt;</span>AnnotateAttr<span style="color:#f92672">&gt;</span>()) {
+</span></span><span style="display:flex;"><span>            AnnotateAttr <span style="color:#f92672">*</span>attr <span style="color:#f92672">=</span> RD<span style="color:#f92672">-&gt;</span>getAttr<span style="color:#f92672">&lt;</span>AnnotateAttr<span style="color:#f92672">&gt;</span>();
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (attr<span style="color:#f92672">-&gt;</span>getAnnotation() <span style="color:#f92672">==</span> AnnotationClassName) {
+</span></span><span style="display:flex;"><span>                llvm<span style="color:#f92672">::</span>errs() <span style="color:#f92672">&lt;&lt;</span> (RD<span style="color:#f92672">-&gt;</span>isStruct() <span style="color:#f92672">?</span> <span style="color:#e6db74">&#34;annotation struct: &#34;</span> <span style="color:#f92672">:</span> <span style="color:#e6db74">&#34;annotation class: &#34;</span>) <span style="color:#f92672">&lt;&lt;</span> RD<span style="color:#f92672">-&gt;</span>getNameAsString() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">auto</span> I : RD<span style="color:#f92672">-&gt;</span>decls()) {
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">if</span> (<span style="color:#66d9ef">const</span> CXXMethodDecl <span style="color:#f92672">*</span>MD <span style="color:#f92672">=</span> dyn_cast<span style="color:#f92672">&lt;</span>CXXMethodDecl<span style="color:#f92672">&gt;</span>(I)) {
+</span></span><span style="display:flex;"><span>                        HandleCXXMethodDecl(MD);
+</span></span><span style="display:flex;"><span>                    }
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">HandleCXXMethodDecl</span>(<span style="color:#66d9ef">const</span> CXXMethodDecl <span style="color:#f92672">*</span>MD) {
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//        const CXXRecordDecl *RD = MD-&gt;getParent();
+</span></span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">if</span> (MD<span style="color:#f92672">-&gt;</span>hasAttr<span style="color:#f92672">&lt;</span>AnnotateAttr<span style="color:#f92672">&gt;</span>()) {
+</span></span><span style="display:flex;"><span>            AnnotateAttr <span style="color:#f92672">*</span>attr <span style="color:#f92672">=</span> MD<span style="color:#f92672">-&gt;</span>getAttr<span style="color:#f92672">&lt;</span>AnnotateAttr<span style="color:#f92672">&gt;</span>();
+</span></span><span style="display:flex;"><span>            <span style="color:#66d9ef">if</span> (attr<span style="color:#f92672">-&gt;</span>getAnnotation() <span style="color:#f92672">==</span> AnnotationMethodName) {
+</span></span><span style="display:flex;"><span>                llvm<span style="color:#f92672">::</span>errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\t</span><span style="color:#e6db74">method: &#34;</span> <span style="color:#f92672">&lt;&lt;</span> MD<span style="color:#f92672">-&gt;</span>getNameAsString() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">auto</span> numParams <span style="color:#f92672">=</span> MD<span style="color:#f92672">-&gt;</span>getNumParams();
+</span></span><span style="display:flex;"><span>                <span style="color:#66d9ef">for</span> (<span style="color:#66d9ef">unsigned</span> <span style="color:#66d9ef">int</span> i <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>; i <span style="color:#f92672">&lt;</span> numParams; i<span style="color:#f92672">++</span>) {
+</span></span><span style="display:flex;"><span>                    <span style="color:#66d9ef">auto</span> PD <span style="color:#f92672">=</span> MD<span style="color:#f92672">-&gt;</span>getParamDecl(i);
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                    PD-&gt;dump();
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    QualType type <span style="color:#f92672">=</span> PD<span style="color:#f92672">-&gt;</span>getType();
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                    if (true &amp;&amp; !type.isNull()) {
+</span></span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                      // If the type is sugared, also dump a (shallow) desugared type.
+</span></span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                      SplitQualType D_split = type.getSplitDesugaredType();
+</span></span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                      if (T_split != D_split)
+</span></span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                          llvm::errs() &lt;&lt; &#34;:&#39;&#34; &lt;&lt; QualType::getAsString(D_split, PrintPolicy) &lt;&lt; &#34;&#39;&#34;;
+</span></span></span><span style="display:flex;"><span>                    <span style="color:#75715e">//                    }
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>                    llvm<span style="color:#f92672">::</span>errs() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\t\t</span><span style="color:#e6db74">param: name -&gt; &#34;</span> <span style="color:#f92672">&lt;&lt;</span> PD<span style="color:#f92672">-&gt;</span>getNameAsString() <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34; type -&gt; &#34;</span> <span style="color:#f92672">&lt;&lt;</span> QualType<span style="color:#f92672">::</span>getAsString(type.split(), PrintingPolicy{{}}) <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>                }
+</span></span><span style="display:flex;"><span>            }
+</span></span><span style="display:flex;"><span>        }
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">class</span> <span style="color:#a6e22e">CppNativeGenAction</span> <span style="color:#f92672">:</span> <span style="color:#66d9ef">public</span> PluginASTAction {
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>set<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> ParsedTemplates;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>  <span style="color:#66d9ef">protected</span><span style="color:#f92672">:</span>
+</span></span><span style="display:flex;"><span>    std<span style="color:#f92672">::</span>unique_ptr<span style="color:#f92672">&lt;</span>ASTConsumer<span style="color:#f92672">&gt;</span> CreateASTConsumer(CompilerInstance <span style="color:#f92672">&amp;</span>CI,
+</span></span><span style="display:flex;"><span>                                                   llvm<span style="color:#f92672">::</span>StringRef) <span style="color:#66d9ef">override</span> {
+</span></span><span style="display:flex;"><span>        <span style="color:#75715e">// 忽略警告
+</span></span></span><span style="display:flex;"><span>        CI.getDiagnostics().setClient(<span style="color:#66d9ef">new</span> IgnoringDiagConsumer());
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> std<span style="color:#f92672">::</span>make_unique<span style="color:#f92672">&lt;</span>CppNativeGenConsumer<span style="color:#f92672">&gt;</span>(CI, ParsedTemplates);
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">bool</span> <span style="color:#a6e22e">ParseArgs</span>(<span style="color:#66d9ef">const</span> CompilerInstance <span style="color:#f92672">&amp;</span>CI,
+</span></span><span style="display:flex;"><span>                   <span style="color:#66d9ef">const</span> std<span style="color:#f92672">::</span>vector<span style="color:#f92672">&lt;</span>std<span style="color:#f92672">::</span>string<span style="color:#f92672">&gt;</span> <span style="color:#f92672">&amp;</span>args) <span style="color:#66d9ef">override</span> {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> true;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">void</span> <span style="color:#a6e22e">PrintHelp</span>(llvm<span style="color:#f92672">::</span>raw_ostream <span style="color:#f92672">&amp;</span>ros) {
+</span></span><span style="display:flex;"><span>        ros <span style="color:#f92672">&lt;&lt;</span> <span style="color:#e6db74">&#34;Help for CppNativeGen plugin goes here</span><span style="color:#ae81ff">\n</span><span style="color:#e6db74">&#34;</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>};
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>}  <span style="color:#75715e">// namespace
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">// static FrontendPluginRegistry::Add&lt;CppNativeGenAction&gt;
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">//     X(&#34;cpp-native-gen&#34;, &#34;print function names&#34;);
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> clang;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> tooling;
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">using</span> <span style="color:#66d9ef">namespace</span> llvm;
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">static</span> llvm<span style="color:#f92672">::</span>cl<span style="color:#f92672">::</span>OptionCategory OptsCategory(<span style="color:#e6db74">&#34;cpp-native-gen&#34;</span>);
+</span></span><span style="display:flex;"><span><span style="color:#66d9ef">int</span> <span style="color:#a6e22e">main</span>(<span style="color:#66d9ef">int</span> argc, <span style="color:#66d9ef">const</span> <span style="color:#66d9ef">char</span> <span style="color:#f92672">**</span>argv) {
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">//    sys::PrintStackTraceOnErrorSignal(argv[0], false);
+</span></span></span><span style="display:flex;"><span>    <span style="color:#75715e">//    PrettyStackTraceProgram X(argc, argv);
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">auto</span> ExpectedParser <span style="color:#f92672">=</span>
+</span></span><span style="display:flex;"><span>        CommonOptionsParser<span style="color:#f92672">::</span>create(argc, argv, OptsCategory);
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">if</span> (<span style="color:#f92672">!</span>ExpectedParser) {
+</span></span><span style="display:flex;"><span>        llvm<span style="color:#f92672">::</span>errs() <span style="color:#f92672">&lt;&lt;</span> ExpectedParser.takeError();
+</span></span><span style="display:flex;"><span>        <span style="color:#66d9ef">return</span> <span style="color:#ae81ff">1</span>;
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>    CommonOptionsParser <span style="color:#f92672">&amp;</span>OptionsParser <span style="color:#f92672">=</span> ExpectedParser.get();
+</span></span><span style="display:flex;"><span>    ClangTool Tool(OptionsParser.getCompilations(),
+</span></span><span style="display:flex;"><span>                   OptionsParser.getSourcePathList());
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#75715e">//    auto cmd = OptionsParser.getCompilations().getCompileCommands(OptionsParser.getSourcePathList().front()).front();
+</span></span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#75715e">/*
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">     /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/xxx
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">     
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">     /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang 是对上面路径的软连
+</span></span></span><span style="display:flex;"><span><span style="color:#75715e">    */</span>
+</span></span><span style="display:flex;"><span>    Tool.appendArgumentsAdjuster(getInsertArgumentAdjuster(
+</span></span><span style="display:flex;"><span>        <span style="color:#e6db74">&#34;-I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/clang/include&#34;</span>,
+</span></span><span style="display:flex;"><span>        ArgumentInsertPosition<span style="color:#f92672">::</span>END));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    Tool.appendArgumentsAdjuster(getInsertArgumentAdjuster(
+</span></span><span style="display:flex;"><span>        <span style="color:#e6db74">&#34;-I/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1&#34;</span>,
+</span></span><span style="display:flex;"><span>        ArgumentInsertPosition<span style="color:#f92672">::</span>END));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    Tool.appendArgumentsAdjuster(getInsertArgumentAdjuster(
+</span></span><span style="display:flex;"><span>        <span style="color:#e6db74">&#34;-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include&#34;</span>,
+</span></span><span style="display:flex;"><span>        ArgumentInsertPosition<span style="color:#f92672">::</span>END));
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    <span style="color:#66d9ef">return</span> Tool.run(clang<span style="color:#f92672">::</span>tooling<span style="color:#f92672">::</span>newFrontendActionFactory<span style="color:#f92672">&lt;</span>CppNativeGenAction<span style="color:#f92672">&gt;</span>().get());
+</span></span><span style="display:flex;"><span>}</span></span></code></pre></div><ul>
+<li>在<code>cpp-native-gen</code> <code>Edit Scheme</code> 添加源码文件
+<img src="./WX20210825-103347@2x.png" alt="" /></li>
+<li>运行即可看到控制台输出如下
+<img src="./WX20210825-103454@2x.png" alt="" /></li>
+</ul>
+<blockquote class='book-hint '>
+<p>剩下的就是，利用上面步骤收集的信息然后生成对应的<code>Objective-C++</code>源码，当然其中还是有很多细节的，比如参数类型的转换</p>
+</blockquote></article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+<div>
+
+</div>
+
+<div>
+
+</div>
+
+</div>
+
+<div class="flex flex-wrap justify-between">
+    <span>
+    
+      <a href="/docs/wwdc22/ch01/01/" class="flex align-center">
+        <img src="/icons/backward.svg" class="book-icon" alt="Backward" />
+        <span>运行时优化</span>
+      </a>
+    
+    </span>
+    <span>
+    
+      <a href="/docs/other/ffmpeg/ch01/01/" class="flex align-center">
+        <span>iOS使用FFmepeg命令行工具源码实现转码功能</span>
+        <img src="/icons/forward.svg" class="book-icon" alt="Forward" />
+      </a>
+    
+    </span>
+  </div>
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+  
+ 
+        
+  
+    <script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script>
+  
+
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+  
+  <aside class="book-toc">
+    <div class="book-toc-content">
+      
+  
+<nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li>
+          <ul>
+            <li></li>
+            <li><a href="#libtooling">LibTooling</a></li>
+          </ul>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+
+
+
+    </div>
+  </aside>
+  
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
