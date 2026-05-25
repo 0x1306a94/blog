@@ -10,32 +10,17 @@ task default: %w[publish]
 
 desc "Generate book static files by Hugo"
 task :gen do
-  system "hugo --verbose"
+  system "hugo"
 end
 
 desc "Update content"
 task :u do
-  Dir.chdir("./content") do
-    system "git pull origin master"
-  end 
+  system "depctl"
 end
 
 desc "Run Hugo server to test"
 task :s do 
   system "hugo server --minify --theme book"
-end
-
-desc "Make dev env ready"
-task :ready do
-  sys = ENV['sys']
-  if sys == "ubuntu"
-    system "sudo apt-get install hugo"
-  elsif sys == "macos"
-    system "brew install hugo tree --verbose"
-  end
-  system "bundle install"
-  system "git submodule update --init"
-  system "tree"
 end
 
 desc "Generate and publish book to my Repo"

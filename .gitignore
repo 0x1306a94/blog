@@ -91,3 +91,4 @@ build-iPhoneSimulator/
 # End of https://www.gitignore.io/api/macos,ruby
 
 /public
+/third_party
