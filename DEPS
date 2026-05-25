@@ -7,7 +7,7 @@
     "common": [
       {
         "url": "${GITHUB_BASE_URL}/0x1306a94/blog-content.git",
-        "commit": "d9855c916e1e0c6ef696217583ced62aa56e226f",
+        "commit": "140242a1993613909420715d5ce963d93a4dd8b3",
         "dir": "third_party/content"
       },
       {
